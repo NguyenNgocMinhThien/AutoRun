@@ -30,7 +30,7 @@ async function sendTelegramAlert(message) {
 async function runScraper() {
     console.log("Khởi động trình duyệt ảo ngầm...");
     const browser = await puppeteer.launch({ 
-        headless: true, // Chạy ngầm (bắt buộc khi đưa lên server)
+        headless: "new", // Chạy ngầm (bắt buộc khi đưa lên server)
         args: ['--no-sandbox', '--disable-setuid-sandbox'] 
     });
     
