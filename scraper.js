@@ -40,7 +40,7 @@ async function runScraper() {
     let allJobs = [];
 
     for (const kw of KEYWORDS) {
-        const searchKw = `${kw} $60,000`; 
+        const searchKw = `${kw} $60`; 
         
         // Đổi về ca.indeed.com (Canada) và thêm bán kính 25km
         const url = `https://ca.indeed.com/jobs?q=${encodeURIComponent(searchKw)}&l=Vancouver%2C+BC&radius=25&fromage=3`;
