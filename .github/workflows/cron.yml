@@ -33,10 +33,9 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: node scraper.js
-        # ... sau bước Chạy Script ...
+
       - name: Upload Excel Report
         uses: actions/upload-artifact@v4
         with:
-          name: Indeed-Job-Excel # Tên gói dữ liệu
-          path: Indeed_Jobs.xlsx # Đường dẫn đến file đã tạo ở bước trên
-          retention-days: 7      # Lưu trữ trong 7 ngày
+          name: Indeed-Job-Report
+          path: Indeed_Jobs.xlsx
