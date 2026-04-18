@@ -1,6 +1,10 @@
-const puppeteer = require('puppeteer');
+const puppeteer = require('puppeteer-extra');
+const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const axios = require('axios');
 const XLSX = require('xlsx');
+
+// Kích hoạt chế độ tàng hình
+puppeteer.use(StealthPlugin());
 
 const KEYWORDS = ["Analyst", "CFA", "CEO", "Data Science", "FP&A"];
 
@@ -16,13 +20,16 @@ async function sendTelegramAlert(message) {
 }
 
 async function runScraper() {
-    console.log("🚀 Đang khởi động trình duyệt tàng hình...");
+    console.log("🚀 Đang khởi động trình duyệt tàng hình (Stealth Mode)...");
+    
+    // Khởi tạo browser với các tham số tối ưu hơn
     const browser = await puppeteer.launch({
         headless: "new",
         args: [
             '--no-sandbox', 
             '--disable-setuid-sandbox', 
-            '--disable-blink-features=AutomationControlled'
+            '--disable-blink-features=AutomationControlled',
+            '--window-size=1920,1080' // Giả lập màn hình máy tính thật
         ]
     });
     const page = await browser.newPage();
