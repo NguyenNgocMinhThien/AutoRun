@@ -8,62 +8,52 @@ puppeteer.use(StealthPlugin());
 
 const KEYWORDS = ["Analyst", "CFA", "CEO", "Data Science", "FP&A"];
 
+// 1. HÀM GỬI TELEGRAM
 async function sendTelegramAlert(message) {
-    const botToken = process.env.TELEGRAM_TOKEN;
-    const chatId = process.env.TELEGRAM_CHAT_ID;
+    const botToken = "8737421178:AAH2ju-ExXxNeBAWf_r6nl34bJkvg5QBqHw"; 
+    const chatId = "6131324160"; 
     if (!botToken || !chatId) return;
     try {
         await axios.post(`https://api.telegram.org/bot${botToken}/sendMessage`, {
             chat_id: chatId, text: message, parse_mode: 'HTML'
         });
-    } catch (e) { console.error("Telegram Error: Kiểm tra lại Secret Chat ID (phải là số)"); }
+        console.log("📱 Đã gửi tin nhắn Telegram thành công!");
+    } catch (e) { 
+        console.error("❌ Telegram Error:", e.message); 
+    }
 }
 
+// ... các phần khai báo bên trên giữ nguyên ...
+
 async function runScraper() {
-    console.log("🚀 Đang khởi động trình duyệt tàng hình (Stealth Mode)...");
+    console.log("🚀 Đang chạy trên GitHub với ScraperAPI...");
     
-    // Khởi tạo browser với các tham số tối ưu hơn
     const browser = await puppeteer.launch({
-        headless: "new",
-        args: [
-            '--no-sandbox', 
-            '--disable-setuid-sandbox', 
-            '--disable-blink-features=AutomationControlled',
-            '--window-size=1920,1080' // Giả lập màn hình máy tính thật
-        ]
+        headless: true, // Phải là true trên GitHub
+        args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
     const page = await browser.newPage();
-    
-    // Giả lập User Agent để tránh bị chặn
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-
     let allJobs = [];
 
     for (const kw of KEYWORDS) {
-        const searchKw = `${kw} $60`; 
+        const searchKw = `${kw} $60,000`;
+        const targetUrl = `https://ca.indeed.com/jobs?q=${encodeURIComponent(searchKw)}&l=Vancouver%2C+BC&radius=25&fromage=3`;
         
-        // Đổi về ca.indeed.com (Canada) và thêm bán kính 25km
-        const url = `https://ca.indeed.com/jobs?q=${encodeURIComponent(searchKw)}&l=Vancouver%2C+BC&radius=25&fromage=3`;
-        
-        try {
-            console.log(`🔍 Đang quét: ${kw} tại vùng Vancouver (>$60k)`);
-            await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 90000 });
-            // Đợi ngẫu nhiên từ 5-10 giây để giống người thật
-            const waitTime = Math.floor(Math.random() * 5000) + 5000;
-            await new Promise(r => setTimeout(r, waitTime));
+        // CẤU TRÚC URL MỚI QUA SCRAPERAPI
+        const proxyUrl = `http://api.scraperapi.com?api_key=${process.env.SCRAPER_API_KEY}&url=${encodeURIComponent(targetUrl)}&render=true`;
 
-            const content = await page.content();
-            if (content.includes("hCaptcha") || content.includes("ddos")) {
-                console.log(`⚠️ Bị chặn bởi Captcha tại: ${kw}`);
-                continue;
-            }
+        try {
+            console.log(`🔍 Đang quét qua Proxy: ${kw}`);
+            await page.goto(proxyUrl, { waitUntil: 'networkidle2', timeout: 120000 });
+            
+            // Đợi thêm một chút để dữ liệu kịp load
+            await new Promise(r => setTimeout(r, 5000));
 
             const jobs = await page.evaluate(() => {
                 let results = [];
                 document.querySelectorAll('.job_seen_beacon').forEach(card => {
                     const title = card.querySelector('h2.jobTitle')?.innerText || "";
-                    const salary = card.querySelector('.salary-snippet-container')?.innerText || 
-                                   card.querySelector('.estimated-salary-container')?.innerText || "";
+                    const salary = card.querySelector('.salary-snippet-container')?.innerText || "";
                     const link = card.querySelector('h2.jobTitle a')?.href || "";
                     if (title) results.push({ Title: title, Salary: salary, Link: link });
                 });
@@ -74,15 +64,12 @@ async function runScraper() {
             allJobs.push(...jobs);
 
         } catch (err) { 
-            console.log(`❌ Lỗi tại từ khóa ${kw}: ${err.message}`); 
+            console.log(`❌ Lỗi tại ${kw}: ${err.message}`); 
         }
     }
 
-    await browser.close();
-
-    // LOGIC QUAN TRỌNG: Luôn tạo file Excel để không lỗi bước Upload Artifact
+    // 4. XUẤT FILE EXCEL
     const dataToExport = allJobs.length > 0 ? allJobs : [{ Title: "No jobs found", Salary: "N/A", Link: "N/A" }];
-    
     try {
         const worksheet = XLSX.utils.json_to_sheet(dataToExport);
         const workbook = XLSX.utils.book_new();
@@ -93,11 +80,13 @@ async function runScraper() {
         console.error("❌ Lỗi khi ghi file Excel:", excelErr);
     }
 
+    // 5. GỬI THÔNG BÁO TỔNG KẾT QUA TELEGRAM
     if (allJobs.length > 0) {
-        await sendTelegramAlert(`✅ Đã quét xong! Tìm thấy <b>${allJobs.length}</b> jobs.\nLink tải Excel trong tab Actions.`);
+        await sendTelegramAlert(`✅ <b>CHẠY TRÊN MÁY TÍNH THÀNH CÔNG!</b>\nĐã quét xong! Tìm thấy <b>${allJobs.length}</b> jobs.\nFile Excel đã được lưu tại máy tính của bạn.`);
     } else {
         await sendTelegramAlert("⚠️ Đã chạy nhưng không tìm thấy job nào hoặc bị Indeed chặn.");
     }
-}
+} // <-- Ngoặc nhọn này cực kỳ quan trọng để đóng hàm runScraper
 
+// Bắt đầu chạy
 runScraper();
