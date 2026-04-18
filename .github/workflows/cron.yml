@@ -1,19 +1,35 @@
 name: Daily Job Scraper
+
 on:
   schedule:
-    - cron: '0 1 * * *'
+    - cron: '0 1 * * *' # Chạy lúc 8h sáng VN
   workflow_dispatch:
+
 jobs:
   scrape-jobs:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Install
-        run: npm install puppeteer axios
-      - name: Run
+
+      - name: Install Dependencies
+        # Thêm biến PUPPETEER_SKIP_CHROMIUM_DOWNLOAD để cài đặt siêu tốc
+        run: |
+          export PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+          npm install axios puppeteer
+
+      - name: Install Google Chrome
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y google-chrome-stable
+
+      - name: Chạy Script
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
