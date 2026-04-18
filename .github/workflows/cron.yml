@@ -2,8 +2,8 @@ name: Daily Job Scraper
 
 on:
   schedule:
-    - cron: '0 0 * * *' # Chạy mỗi ngày một lần
-  workflow_dispatch: # Cho phép bấm nút chạy tay
+    - cron: '0 0 * * *'
+  workflow_dispatch:
 
 jobs:
   build:
@@ -21,15 +21,19 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Install Chrome for Puppeteer
+        run: npx puppeteer browsers install chrome
+
       - name: Chay Script
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          SCRAPER_API_KEY: ${{ secrets.SCRAPER_API_KEY }}
         run: node scraper.js
 
       - name: Upload Excel Report
         uses: actions/upload-artifact@v4
-        if: always() # Luôn chạy kể cả khi script lỗi
+        if: always()
         with:
           name: Indeed-Jobs-Excel
           path: Indeed_Jobs.xlsx
