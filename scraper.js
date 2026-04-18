@@ -40,11 +40,14 @@ async function runScraper() {
     let allJobs = [];
 
     for (const kw of KEYWORDS) {
-        const url = `https://www.indeed.com/jobs?q=${encodeURIComponent(kw)}&l=Vancouver+BC&fromage=3`;
+        const searchKw = `${kw} $60,000`; 
+        
+        // Đổi về ca.indeed.com (Canada) và thêm bán kính 25km
+        const url = `https://ca.indeed.com/jobs?q=${encodeURIComponent(searchKw)}&l=Vancouver%2C+BC&radius=25&fromage=3`;
+        
         try {
-            console.log(`🔍 Đang quét: ${kw}`);
+            console.log(`🔍 Đang quét: ${kw} tại vùng Vancouver (>$60k)`);
             await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 90000 });
-
             // Đợi ngẫu nhiên từ 5-10 giây để giống người thật
             const waitTime = Math.floor(Math.random() * 5000) + 5000;
             await new Promise(r => setTimeout(r, waitTime));
