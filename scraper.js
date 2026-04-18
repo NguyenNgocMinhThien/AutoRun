@@ -34,13 +34,14 @@ async function runScraper() {
 
     for (const kw of KEYWORDS) {
         const targetUrl = `https://ca.indeed.com/jobs?q=${encodeURIComponent(kw + ' $60,000')}&l=Vancouver%2C+BC&radius=25&fromage=3`;
-        // Thay đổi dòng proxyUrl cũ bằng dòng này để thêm tính năng vượt rào mạnh hơn
+        // Thêm &premium=true và &country_code=ca để lấy IP thật tại Canada
         const proxyUrl = `http://api.scraperapi.com?api_key=${process.env.SCRAPER_API_KEY}&url=${encodeURIComponent(targetUrl)}&render=true&premium=true&country_code=ca`;
 
         try {
             console.log(`🔍 Đang quét: ${kw}`);
-            await page.goto(proxyUrl, { waitUntil: 'networkidle2', timeout: 120000 });
-            await new Promise(r => setTimeout(r, 5000));
+            await page.goto(proxyUrl, { waitUntil: 'networkidle0', timeout: 80000 });
+            // Chờ thêm 10 giây để chắc chắn các thẻ job đã hiển thị
+            await new Promise(r => setTimeout(r, 10000));
 
             const jobs = await page.evaluate(() => {
                 let results = [];
