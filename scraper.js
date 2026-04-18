@@ -1,4 +1,4 @@
-const puppeteer = require('puppeteer'); // Dùng puppeteer bản thường cho nhẹ
+const puppeteer = require('puppeteer');
 const axios = require('axios');
 const XLSX = require('xlsx');
 
@@ -16,26 +16,30 @@ async function sendTelegramAlert(message) {
 }
 
 async function runScraper() {
-    console.log("🚀 Đang chạy trên GitHub với ScraperAPI...");
+    console.log("🚀 Đang khởi động với cấu hình GitHub Actions...");
     
     const browser = await puppeteer.launch({
         headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
+        // Chỉ định đường dẫn Chrome có sẵn trên Linux của GitHub
+        executablePath: '/usr/bin/google-chrome',
+        args: [
+            '--no-sandbox', 
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage'
+        ]
     });
+    
     const page = await browser.newPage();
     let allJobs = [];
 
     for (const kw of KEYWORDS) {
         const targetUrl = `https://ca.indeed.com/jobs?q=${encodeURIComponent(kw + ' $60,000')}&l=Vancouver%2C+BC&radius=25&fromage=3`;
-        
-        // Gọi qua ScraperAPI với chế độ render=true để lấy dữ liệu chuẩn
         const proxyUrl = `http://api.scraperapi.com?api_key=${process.env.SCRAPER_API_KEY}&url=${encodeURIComponent(targetUrl)}&render=true`;
 
         try {
-            console.log(`🔍 Đang quét qua Proxy: ${kw}`);
+            console.log(`🔍 Đang quét: ${kw}`);
             await page.goto(proxyUrl, { waitUntil: 'networkidle2', timeout: 120000 });
-            
-            await new Promise(r => setTimeout(r, 5000)); // Chờ trang ổn định
+            await new Promise(r => setTimeout(r, 5000));
 
             const jobs = await page.evaluate(() => {
                 let results = [];
@@ -50,26 +54,19 @@ async function runScraper() {
 
             console.log(`✅ Tìm thấy ${jobs.length} jobs cho ${kw}`);
             allJobs.push(...jobs);
-
-        } catch (err) { 
-            console.log(`❌ Lỗi tại ${kw}: ${err.message}`); 
-        }
+        } catch (err) { console.log(`❌ Lỗi tại ${kw}: ${err.message}`); }
     }
 
     await browser.close();
 
-    // Xuất file
+    // Xuất file Excel
     const dataToExport = allJobs.length > 0 ? allJobs : [{ Title: "No jobs found", Salary: "N/A", Link: "N/A" }];
     const worksheet = XLSX.utils.json_to_sheet(dataToExport);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Jobs");
     XLSX.writeFile(workbook, "Indeed_Jobs.xlsx");
 
-    if (allJobs.length > 0) {
-        await sendTelegramAlert(`✅ <b>GITHUB ACTIONS THÀNH CÔNG!</b>\nĐã tìm thấy <b>${allJobs.length}</b> jobs.\nFile Excel đã được đính kèm trong tab Actions.`);
-    } else {
-        await sendTelegramAlert("⚠️ Đã chạy nhưng không tìm thấy job. Kiểm tra lại ScraperAPI.");
-    }
+    await sendTelegramAlert(`🚀 <b>KẾT QUẢ TỪ CLOUD:</b>\nTìm thấy <b>${allJobs.length}</b> jobs.`);
 }
 
 runScraper();
