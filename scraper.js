@@ -64,7 +64,7 @@ async function runScraper() {
                             const num = parseInt(matches[0]);
                             // Nếu Indeed ghi kiểu "60" thay vì "60000" cho lương năm
                             const normalizedNum = (s.includes('year') && num < 1000) ? num * 1000 : num;
-                            
+
                             if (s.includes('year') && normalizedNum >= 60000) isValidSalary = true;
                             else if (s.includes('hour') && normalizedNum >= 30) isValidSalary = true;
                             else if (normalizedNum >= 60000) isValidSalary = true;
@@ -99,14 +99,15 @@ async function runScraper() {
             .map(link => allJobs.find(a => a.Link === link));
 
         // 2. Xuất file Excel
-        try {
-            const wb = XLSX.utils.book_new();
-            const ws = XLSX.utils.json_to_sheet(uniqueJobs);
-            XLSX.utils.book_append_sheet(wb, ws, "Jobs_Report");
-            XLSX.writeFile(wb, "Indeed_Jobs.xlsx");
+        if (allJobs.length > 0) {
+            // 1. Tạo một bảng tính mới
+            const worksheet = XLSX.utils.json_to_sheet(allJobs);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "Jobs Report");
+
+            // 2. Ghi file vật lý vào thư mục hiện hành
+            XLSX.writeFile(workbook, "Indeed_Jobs.xlsx");
             console.log("📊 Đã tạo xong file Indeed_Jobs.xlsx");
-        } catch (err) {
-            console.error("❌ Lỗi khi tạo file Excel:", err);
         }
 
         // 3. Gửi Telegram (tối đa 10 job tiêu biểu)
