@@ -25,22 +25,24 @@ async function runScraper() {
 
     for (const kw of KEYWORDS) {
         // Đổi URL sang www.indeed.com để giảm khả năng bị chặn
-        const url = `https://www.indeed.com/jobs?q=${encodeURIComponent(kw)}&l=Vancouver+BC&fromage=3`;
+        // Sửa dòng URL bên trong vòng lặp for:
+        const url = `https://www.indeed.com/jobs?q=${encodeURIComponent(kw)}&l=Vancouver+BC`;
+
         try {
             console.log(`🔍 Đang quét: ${kw}`);
-            await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
-            await new Promise(r => setTimeout(r, 5000)); // Chờ 5s cho chắc
+            // Tăng timeout lên 90s vì mạng GitHub đôi khi chậm
+            await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 90000 });
 
-            const jobs = await page.evaluate(() => {
-                let results = [];
-                document.querySelectorAll('.job_seen_beacon').forEach(card => {
-                    const title = card.querySelector('h2.jobTitle')?.innerText || "";
-                    const salary = card.querySelector('.salary-snippet-container')?.innerText || "";
-                    const link = card.querySelector('h2.jobTitle a')?.href || "";
-                    results.push({ Title: title, Salary: salary, Link: link });
-                });
-                return results;
-            });
+            // Đợi ngẫu nhiên từ 5s đến 10s
+            const waitTime = Math.floor(Math.random() * 5000) + 5000;
+            await new Promise(r => setTimeout(r, waitTime));
+
+            // Kiểm tra xem có bị dính Captcha không
+            const content = await page.content();
+            if (content.includes("hCaptcha") || content.includes("ddos")) {
+                console.log(`⚠️ Bị chặn bởi Captcha tại từ khóa: ${kw}`);
+            }
+            // ... tiếp tục phần page.evaluate cũ ...
             allJobs.push(...jobs);
         } catch (err) { console.log(`❌ Lỗi keyword: ${kw}`); }
     }
@@ -53,7 +55,7 @@ async function runScraper() {
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, "Jobs");
         XLSX.writeFile(workbook, "Indeed_Jobs.xlsx"); // Tên file phải khớp với cron.yml
-        
+
         console.log("📊 Đã tạo xong file Indeed_Jobs.xlsx");
     }
 }
