@@ -1,9 +1,12 @@
 const axios = require('axios');
 const XLSX = require('xlsx');
 const cheerio = require('cheerio');
+const fs = require('fs');
+const FormData = require('form-data');
 
 const KEYWORDS = ["Analyst", "CFA", "CEO", "Data Science", "FP&A"];
 
+// Hàm gửi tin nhắn văn bản
 async function sendTelegramAlert(message) {
     const botToken = process.env.TELEGRAM_TOKEN;
     const chatId = process.env.TELEGRAM_CHAT_ID;
@@ -12,7 +15,25 @@ async function sendTelegramAlert(message) {
         await axios.post(`https://api.telegram.org/bot${botToken}/sendMessage`, {
             chat_id: chatId, text: message, parse_mode: 'HTML'
         });
-    } catch (e) { console.error("❌ Telegram Error:", e.message); }
+    } catch (e) { console.error("❌ Telegram Message Error:", e.message); }
+}
+
+// Hàm gửi file Excel đính kèm
+async function sendTelegramFile(filePath) {
+    const botToken = process.env.TELEGRAM_TOKEN;
+    const chatId = process.env.TELEGRAM_CHAT_ID;
+    if (!botToken || !chatId || !fs.existsSync(filePath)) return;
+
+    const form = new FormData();
+    form.append('chat_id', chatId);
+    form.append('document', fs.createReadStream(filePath));
+
+    try {
+        await axios.post(`https://api.telegram.org/bot${botToken}/sendDocument`, form, {
+            headers: form.getHeaders()
+        });
+        console.log("✅ Đã gửi file Excel qua Telegram!");
+    } catch (e) { console.error("❌ Telegram File Error:", e.message); }
 }
 
 async function runScraper() {
@@ -28,30 +49,28 @@ async function runScraper() {
         try {
             const response = await axios.get('http://api.scraperapi.com', {
                 params: {
-                    api_key: process.env.SCRAPER_API_KEY, // Lấy từ Secrets
+                    api_key: process.env.SCRAPER_API_KEY, //
                     url: targetUrl,
-                    render: 'true',       // Ép ScraperAPI render Javascript
-                    premium: 'true',      // Dùng IP dân cư cao cấp
-                    country_code: 'ca',   // Định vị tại Canada
-                    keep_headers: 'true'  // Giữ nguyên headers để tàng hình tốt hơn
+                    render: 'true',       
+                    premium: 'true',      
+                    country_code: 'ca'    
                 },
-                timeout: 60000
+                timeout: 90000
             });
 
             const $ = cheerio.load(response.data);
             let count = 0;
 
-            // Selector này quét sâu vào cấu trúc thẻ của Indeed
             $('.job_seen_beacon, .resultContent, [class*="jobCard"]').each((i, el) => {
                 const title = $(el).find('h2.jobTitle, a[id^="job_"]').text().trim().replace(/new/g, '');
                 const salary = $(el).find('.salary-snippet-container, .estimated-salary-container, [class*="salary"]').text().trim() || "N/A";
-                const link = $(el).find('a[data-jk], h2.jobTitle a').attr('href');
+                const linkSuffix = $(el).find('a[data-jk], h2.jobTitle a').attr('href');
 
                 if (title && title !== "N/A") {
                     allJobs.push({
                         Title: title,
                         Salary: salary,
-                        Link: link ? (link.startsWith('http') ? link : 'https://ca.indeed.com' + link) : "N/A"
+                        Link: linkSuffix ? (linkSuffix.startsWith('http') ? linkSuffix : 'https://ca.indeed.com' + linkSuffix) : "N/A"
                     });
                     count++;
                 }
@@ -63,20 +82,24 @@ async function runScraper() {
             console.log(`❌ Lỗi tại ${kw}: ${err.message}`);
         }
         
-        // Nghỉ 3 giây để tránh bị hệ thống quét của Indeed nghi ngờ
-        await new Promise(r => setTimeout(r, 3000));
+        await new Promise(r => setTimeout(r, 4000));
     }
 
-    // Xuất kết quả
     if (allJobs.length > 0) {
+        // 1. Tạo file Excel
+        const fileName = "Indeed_Jobs.xlsx";
         const worksheet = XLSX.utils.json_to_sheet(allJobs);
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, "Jobs");
-        XLSX.writeFile(workbook, "Indeed_Jobs.xlsx");
+        XLSX.writeFile(workbook, fileName);
         
-        await sendTelegramAlert(`✅ <b>CLOUD REPORT:</b>\nTìm thấy <b>${allJobs.length}</b> jobs mới tại Vancouver.\nFile Excel đã sẵn sàng trên GitHub!`);
+        // 2. Gửi thông báo và file qua Telegram
+        await sendTelegramAlert(`✅ <b>QUÉT THÀNH CÔNG!</b>\nTìm thấy <b>${allJobs.length}</b> jobs mới tại Vancouver.`);
+        await sendTelegramFile(fileName);
+        
+        console.log("🚀 Hoàn tất mọi công việc!");
     } else {
-        await sendTelegramAlert("⚠️ <b>THÔNG BÁO:</b> Đã quét nhưng Indeed trả về trang trống. Có thể cần thay đổi IP của Proxy.");
+        await sendTelegramAlert("⚠️ <b>THÔNG BÁO:</b> Đã quét nhưng không lấy được dữ liệu. Kiểm tra lại ScraperAPI.");
     }
 }
 
