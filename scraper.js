@@ -1,6 +1,6 @@
-const puppeteer = require('puppeteer');
 const axios = require('axios');
 const XLSX = require('xlsx');
+const cheerio = require('cheerio');
 
 const KEYWORDS = ["Analyst", "CFA", "CEO", "Data Science", "FP&A"];
 
@@ -16,82 +16,67 @@ async function sendTelegramAlert(message) {
 }
 
 async function runScraper() {
-    console.log("🚀 Đang khởi động chế độ Tàng Hình tối ưu...");
-
-    const browser = await puppeteer.launch({
-        headless: true,
-        executablePath: '/usr/bin/google-chrome',
-        args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-blink-features=AutomationControlled', // Ẩn cờ trình duyệt tự động
-            '--window-size=1920,1080'
-        ]
-    });
-
-    const page = await browser.newPage();
-    
-    // Giả lập User-Agent của máy tính thật
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36');
-
-    // Ghi đè thông số webdriver để Indeed không phát hiện bot
-    await page.evaluateOnNewDocument(() => {
-        Object.defineProperty(navigator, 'webdriver', { get: () => false });
-    });
-
+    console.log("🚀 Đang khởi động phương án HTTP Request tàng hình...");
     let allJobs = [];
 
     for (const kw of KEYWORDS) {
+        // Indeed Canada URL
         const targetUrl = `https://ca.indeed.com/jobs?q=${encodeURIComponent(kw + ' $60,000')}&l=Vancouver%2C+BC&radius=25&fromage=3`;
-        // Chèn trực tiếp các tham số Premium mạnh nhất
-        const proxyUrl = `http://api.scraperapi.com?api_key=${process.env.SCRAPER_API_KEY}&url=${encodeURIComponent(targetUrl)}&render=true&premium=true&country_code=ca&wait_for_selector=.job_seen_beacon`;
+        
+        console.log(`🔍 Đang lấy dữ liệu cho: ${kw}`);
 
         try {
-            console.log(`🔍 Đang quét: ${kw}`);
-            await page.goto(proxyUrl, { waitUntil: 'networkidle2', timeout: 120000 });
-            
-            // Cuộn trang để kích hoạt các phần tử ẩn
-            await page.evaluate(() => window.scrollBy(0, window.innerHeight));
-            await new Promise(r => setTimeout(r, 10000));
-
-            const jobs = await page.evaluate(() => {
-                let results = [];
-                // Selector rộng hơn để tránh Indeed đổi tên class
-                const cards = document.querySelectorAll('.job_seen_beacon, [data-testid="jobListingShell"], .result');
-
-                cards.forEach(card => {
-                    const titleEl = card.querySelector('h2.jobTitle, [id^="job_"], a[data-jk]');
-                    const salaryEl = card.querySelector('.salary-snippet-container, .estimated-salary-container, [class*="salary"]');
-                    
-                    if (titleEl) {
-                        results.push({ 
-                            Title: titleEl.innerText.replace("new", "").trim(), 
-                            Salary: salaryEl ? salaryEl.innerText.trim() : "N/A", 
-                            Link: titleEl.querySelector('a')?.href || titleEl.href || ""
-                        });
-                    }
-                });
-                return results;
+            const response = await axios.get('http://api.scraperapi.com', {
+                params: {
+                    api_key: process.env.SCRAPER_API_KEY, // Lấy từ Secrets
+                    url: targetUrl,
+                    render: 'true',       // Ép ScraperAPI render Javascript
+                    premium: 'true',      // Dùng IP dân cư cao cấp
+                    country_code: 'ca',   // Định vị tại Canada
+                    keep_headers: 'true'  // Giữ nguyên headers để tàng hình tốt hơn
+                },
+                timeout: 60000
             });
 
-            console.log(`✅ Thành công: ${jobs.length} jobs cho ${kw}`);
-            allJobs.push(...jobs);
-        } catch (err) { 
-            console.log(`❌ Lỗi tại ${kw}: Indeed chặn hoặc quá tải.`); 
+            const $ = cheerio.load(response.data);
+            let count = 0;
+
+            // Selector này quét sâu vào cấu trúc thẻ của Indeed
+            $('.job_seen_beacon, .resultContent, [class*="jobCard"]').each((i, el) => {
+                const title = $(el).find('h2.jobTitle, a[id^="job_"]').text().trim().replace(/new/g, '');
+                const salary = $(el).find('.salary-snippet-container, .estimated-salary-container, [class*="salary"]').text().trim() || "N/A";
+                const link = $(el).find('a[data-jk], h2.jobTitle a').attr('href');
+
+                if (title && title !== "N/A") {
+                    allJobs.push({
+                        Title: title,
+                        Salary: salary,
+                        Link: link ? (link.startsWith('http') ? link : 'https://ca.indeed.com' + link) : "N/A"
+                    });
+                    count++;
+                }
+            });
+
+            console.log(`✅ Thành công: Lấy được ${count} jobs cho ${kw}`);
+
+        } catch (err) {
+            console.log(`❌ Lỗi tại ${kw}: ${err.message}`);
         }
+        
+        // Nghỉ 3 giây để tránh bị hệ thống quét của Indeed nghi ngờ
+        await new Promise(r => setTimeout(r, 3000));
     }
 
-    await browser.close();
-
-    // Xuất file và thông báo
+    // Xuất kết quả
     if (allJobs.length > 0) {
         const worksheet = XLSX.utils.json_to_sheet(allJobs);
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, "Jobs");
         XLSX.writeFile(workbook, "Indeed_Jobs.xlsx");
-        await sendTelegramAlert(`✅ <b>QUÉT THÀNH CÔNG!</b>\nTìm thấy <b>${allJobs.length}</b> jobs.`);
+        
+        await sendTelegramAlert(`✅ <b>CLOUD REPORT:</b>\nTìm thấy <b>${allJobs.length}</b> jobs mới tại Vancouver.\nFile Excel đã sẵn sàng trên GitHub!`);
     } else {
-        await sendTelegramAlert(`⚠️ <b>THẤT BẠI:</b> Indeed vẫn đang chặn Cloud. Hãy thử giảm tần suất quét.`);
+        await sendTelegramAlert("⚠️ <b>THÔNG BÁO:</b> Đã quét nhưng Indeed trả về trang trống. Có thể cần thay đổi IP của Proxy.");
     }
 }
 
