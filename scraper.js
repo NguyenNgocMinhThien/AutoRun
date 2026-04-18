@@ -1,7 +1,8 @@
 const puppeteer = require('puppeteer');
 const axios = require('axios');
+const XLSX = require('xlsx'); // Thêm thư viện Excel
 
-const KEYWORDS = ["Analyst", "CFA", "CEO", "Data Science", "FP&A"]; // Rút gọn để test nhanh
+const KEYWORDS = ["Analyst", "CFA", "CEO", "Data Science", "FP&A"];
 const LOCATIONS = ["Vancouver, BC"];
 
 async function sendTelegramAlert(message) {
@@ -10,9 +11,14 @@ async function sendTelegramAlert(message) {
     if (!botToken || !chatId) return;
     try {
         await axios.post(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-            chat_id: chatId, text: message, parse_mode: 'HTML', disable_web_page_preview: true
+            chat_id: chatId,
+            text: message,
+            parse_mode: 'HTML',
+            disable_web_page_preview: true
         });
-    } catch (e) { console.error("Telegram Error"); }
+    } catch (e) {
+        console.error("Telegram Error: Dãy ID hoặc Token có thể bị sai.");
+    }
 }
 
 async function runScraper() {
@@ -22,13 +28,12 @@ async function runScraper() {
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
-            '--disable-blink-features=AutomationControlled', // Ẩn cờ báo hiệu là robot
+            '--disable-blink-features=AutomationControlled',
             '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         ]
     });
 
     const page = await browser.newPage();
-    // Giả lập như người dùng thật đang dùng máy Windows
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
     let allJobs = [];
@@ -39,7 +44,7 @@ async function runScraper() {
             console.log(`🔍 Đang thử truy cập: ${kw}`);
             await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
 
-            // Chờ ngẫu nhiên từ 3-7 giây để giống người đọc bài
+            // Chờ ngẫu nhiên để tránh bot detection
             await new Promise(r => setTimeout(r, Math.floor(Math.random() * 4000) + 3000));
 
             const jobs = await page.evaluate(() => {
@@ -48,44 +53,70 @@ async function runScraper() {
                     const title = card.querySelector('h2.jobTitle')?.innerText || "";
                     const salaryText = card.querySelector('.salary-snippet-container')?.innerText ||
                         card.querySelector('.estimated-salary-container')?.innerText || "";
+                    const link = card.querySelector('h2.jobTitle a')?.href || "";
 
                     // Logic lọc: Min $60k/năm hoặc $30/giờ
                     let isValidSalary = false;
                     if (salaryText) {
                         const s = salaryText.toLowerCase().replace(/,/g, '');
-                        const num = parseInt(s.match(/\d+/));
-                        if (s.includes('year') && num >= 60000) isValidSalary = true;
-                        if (s.includes('hour') && num >= 30) isValidSalary = true;
+                        const matches = s.match(/\d+/);
+                        if (matches) {
+                            const num = parseInt(matches[0]);
+                            // Nếu Indeed ghi kiểu "60" thay vì "60000" cho lương năm
+                            const normalizedNum = (s.includes('year') && num < 1000) ? num * 1000 : num;
+                            
+                            if (s.includes('year') && normalizedNum >= 60000) isValidSalary = true;
+                            else if (s.includes('hour') && normalizedNum >= 30) isValidSalary = true;
+                            else if (normalizedNum >= 60000) isValidSalary = true;
+                        }
                     } else {
-                        isValidSalary = true; // Giữ lại các job không ghi lương để sếp check
+                        isValidSalary = true; // Giữ lại job không lương để sếp xem
                     }
 
                     if (isValidSalary) {
                         results.push({
-                            title,
-                            salary: salaryText,
-                            link: card.querySelector('h2.jobTitle a')?.href
+                            Title: title,
+                            Salary: salaryText,
+                            Link: link
                         });
                     }
                 });
                 return results;
             });
+            console.log(`✅ Tìm thấy ${jobs.length} jobs cho từ khóa ${kw}`);
             allJobs.push(...jobs);
         } catch (err) {
-            console.log(`❌ Không thể vào trang ${kw}. Có thể bị Indeed chặn.`);
+            console.log(`❌ Lỗi tại từ khóa ${kw}: Có thể bị Indeed chặn.`);
         }
     }
 
     await browser.close();
 
+    // --- PHẦN XỬ LÝ DỮ LIỆU ---
     if (allJobs.length > 0) {
-        let msg = `<b>✅ ĐÃ TÌM THẤY ${allJobs.length} JOB PHÙ HỢP</b>\n\n`;
-        allJobs.slice(0, 10).forEach((j, i) => {
-            msg += `${i + 1}. <b>${j.title}</b>\n💰 ${j.salary || 'Thỏa thuận'}\n🔗 <a href="${j.link}">Link</a>\n\n`;
+        // 1. Loại bỏ trùng lặp nếu có
+        const uniqueJobs = Array.from(new Set(allJobs.map(a => a.Link)))
+            .map(link => allJobs.find(a => a.Link === link));
+
+        // 2. Xuất file Excel
+        try {
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.json_to_sheet(uniqueJobs);
+            XLSX.utils.book_append_sheet(wb, ws, "Jobs_Report");
+            XLSX.writeFile(wb, "Indeed_Jobs.xlsx");
+            console.log("📊 Đã tạo xong file Indeed_Jobs.xlsx");
+        } catch (err) {
+            console.error("❌ Lỗi khi tạo file Excel:", err);
+        }
+
+        // 3. Gửi Telegram (tối đa 10 job tiêu biểu)
+        let msg = `<b>✅ ĐÃ TÌM THẤY ${uniqueJobs.length} JOB PHÙ HỢP</b>\n\n`;
+        uniqueJobs.slice(0, 10).forEach((j, i) => {
+            msg += `${i + 1}. <b>${j.Title}</b>\n💰 ${j.Salary || 'Thỏa thuận'}\n🔗 <a href="${j.Link}">Link</a>\n\n`;
         });
         await sendTelegramAlert(msg);
     } else {
-        await sendTelegramAlert("⚠️ Chạy thành công nhưng không tìm thấy job hoặc bị Indeed chặn truy cập.");
+        await sendTelegramAlert("⚠️ Chạy thành công nhưng không tìm thấy job nào đạt yêu cầu lương.");
     }
 }
 
