@@ -1,107 +1,84 @@
 const puppeteer = require('puppeteer');
-const axios = require('axios'); // Dùng để gửi tin nhắn Telegram
+const axios = require('axios');
 
-// Yêu cầu 1: Từ khóa và Địa điểm
-const KEYWORDS = [
-    "Analyst", "FP&A", "Investment", "quantitative researcher", "data science", 
-    "CFA", "Actuarial", "President", "CEO", "CIO", "CTO"
-];
-const LOCATIONS = ["Vancouver, BC", "Burnaby, BC", "North Vancouver, BC", "West Vancouver, BC"];
-
-// Yêu cầu 2: Lọc 3 ngày gần nhất (tích hợp thẳng vào tham số URL của Indeed: &fromage=3)
-// Yêu cầu 3: Lương > $60k/year hoặc > $30/hour
+const KEYWORDS = ["Analyst", "CFA", "CEO", "Data Science", "FP&A"]; // Rút gọn để test nhanh
+const LOCATIONS = ["Vancouver, BC"];
 
 async function sendTelegramAlert(message) {
-    const botToken = 'TOKEN_CỦA_BẠN';
-    const chatId = 'CHAT_ID_CỦA_BẠN';
-    const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
-    
+    const botToken = process.env.TELEGRAM_TOKEN;
+    const chatId = process.env.TELEGRAM_CHAT_ID;
+    if (!botToken || !chatId) return;
     try {
-        await axios.post(url, {
-            chat_id: chatId,
-            text: message,
-            parse_mode: 'HTML'
+        await axios.post(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+            chat_id: chatId, text: message, parse_mode: 'HTML', disable_web_page_preview: true
         });
-    } catch (error) {
-        console.error("Lỗi gửi Telegram:", error);
-    }
+    } catch (e) { console.error("Telegram Error"); }
 }
 
 async function runScraper() {
-    console.log("Khởi động trình duyệt ảo ngầm...");
-    const browser = await puppeteer.launch({ 
-        headless: "new", // Chạy ngầm (bắt buộc khi đưa lên server)
-        args: ['--no-sandbox', '--disable-setuid-sandbox'] 
+    console.log("🚀 Đang khởi động trình duyệt tàng hình...");
+    const browser = await puppeteer.launch({
+        headless: "new",
+        args: [
+            '--no-sandbox', 
+            '--disable-setuid-sandbox',
+            '--disable-blink-features=AutomationControlled', // Ẩn dấu vết bot
+            '--window-size=1920,1080'
+        ]
     });
-    
+
     const page = await browser.newPage();
-    let allValidJobs = [];
+    // Giả lập như người dùng thật đang dùng máy Windows
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
-    for (const location of LOCATIONS) {
-        for (const keyword of KEYWORDS) {
-            // URL đã set sẵn từ khóa, địa điểm và bộ lọc 3 ngày (fromage=3)
-            const url = `https://ca.indeed.com/jobs?q=${encodeURIComponent(keyword)}&l=${encodeURIComponent(location)}&fromage=3`;
-            console.log(`Đang quét: ${keyword} tại ${location}`);
-            
-            await page.goto(url, { waitUntil: 'networkidle2' });
-            
-            // Đợi một chút để tránh bị Indeed chặn
-            await new Promise(r => setTimeout(r, 3000));
+    let allJobs = [];
 
-            // BẠN CÓ THỂ COPY LOGIC TỪ FILE CONTENT.JS CỦA EXTENSION VÀO ĐÂY
+    for (const kw of KEYWORDS) {
+        const url = `https://ca.indeed.com/jobs?q=${encodeURIComponent(kw)}&l=Vancouver%2C+BC&fromage=3`;
+        try {
+            console.log(`🔍 Đang thử truy cập: ${kw}`);
+            await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
+            
+            // Chờ ngẫu nhiên từ 3-7 giây để giống người đọc bài
+            await new Promise(r => setTimeout(r, Math.floor(Math.random() * 4000) + 3000));
+
             const jobs = await page.evaluate(() => {
-                let results = [];
-                // Ví dụ class của Indeed (cần check lại vì Indeed hay đổi)
-                const jobCards = document.querySelectorAll('.job_seen_beacon'); 
-                
-                jobCards.forEach(card => {
-                    const title = card.querySelector('h2.jobTitle')?.innerText || '';
-                    const company = card.querySelector('.companyName')?.innerText || '';
-                    const link = card.querySelector('h2.jobTitle a')?.href || '';
-                    const salaryText = card.querySelector('.salary-snippet-container')?.innerText || '';
+                const results = [];
+                const cards = document.querySelectorAll('.job_seen_beacon');
+                cards.forEach(card => {
+                    const title = card.querySelector('h2.jobTitle')?.innerText || "";
+                    const salaryText = card.querySelector('.salary-snippet-container')?.innerText || "";
+                    const link = card.querySelector('h2.jobTitle a')?.href || "";
                     
-                    // Logic lọc lương cơ bản (Bạn có thể làm mịn hơn bằng Regex)
-                    let isSalaryValid = false;
-                    if (salaryText) {
-                        const salaryStr = salaryText.replace(/,/g, '').toLowerCase();
-                        const numMatch = salaryStr.match(/\d+/);
-                        if (numMatch) {
-                            const num = parseInt(numMatch[0]);
-                            if (salaryStr.includes('year') && num >= 60000) isSalaryValid = true;
-                            if (salaryStr.includes('hour') && num >= 30) isSalaryValid = true;
-                        }
-                    } else {
-                        // Nếu job không để lương, có thể quyết định lấy hay bỏ tùy bạn
-                        isSalaryValid = true; 
-                    }
+                    // Logic lọc lương: >30/hr hoặc >60k/yr
+                    let valid = false;
+                    const s = salaryText.toLowerCase().replace(/,/g, '');
+                    const m = s.match(/\d+/);
+                    if (m) {
+                        const n = parseInt(m[0]);
+                        if ((s.includes('hour') && n >= 30) || (s.includes('year') && n >= 60) || n >= 60000) valid = true;
+                    } else { valid = true; } // Giữ job ko lương
 
-                    if (isSalaryValid) {
-                        results.push({ title, company, link, salary: salaryText });
-                    }
+                    if (title && valid) results.push({ title, salary: salaryText, link });
                 });
                 return results;
             });
-
-            allValidJobs = allValidJobs.concat(jobs);
+            allJobs.push(...jobs);
+        } catch (err) {
+            console.log(`❌ Không thể vào trang ${kw}. Có thể bị Indeed chặn.`);
         }
     }
 
     await browser.close();
 
-    // Xử lý gửi báo cáo
-    if (allValidJobs.length > 0) {
-        let msg = `<b>📊 BÁO CÁO JOB MỚI (Lọc 3 ngày)</b>\nTổng số: ${allValidJobs.length} jobs\n\n`;
-        // Cắt bớt nếu tin nhắn quá dài
-        const jobsToSend = allValidJobs.slice(0, 10); 
-        jobsToSend.forEach((j, index) => {
-            msg += `${index + 1}. <b>${j.title}</b>\n🏢 ${j.company}\n💰 ${j.salary || 'Không rõ'}\n🔗 <a href="${j.link}">Xem chi tiết</a>\n\n`;
+    if (allJobs.length > 0) {
+        let msg = `<b>✅ ĐÃ TÌM THẤY ${allJobs.length} JOB PHÙ HỢP</b>\n\n`;
+        allJobs.slice(0, 10).forEach((j, i) => {
+            msg += `${i+1}. <b>${j.title}</b>\n💰 ${j.salary || 'Thỏa thuận'}\n🔗 <a href="${j.link}">Link</a>\n\n`;
         });
-        
         await sendTelegramAlert(msg);
-        console.log("Đã gửi báo cáo thành công!");
     } else {
-        await sendTelegramAlert("Sáng nay không quét được job nào thỏa điều kiện.");
-        console.log("Không có data mới.");
+        await sendTelegramAlert("⚠️ Chạy thành công nhưng không tìm thấy job hoặc bị Indeed chặn truy cập.");
     }
 }
 

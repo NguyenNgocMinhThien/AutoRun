@@ -1,34 +1,19 @@
 name: Daily Job Scraper
-
 on:
   schedule:
     - cron: '0 1 * * *'
   workflow_dispatch:
-
 jobs:
   scrape-jobs:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4 
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: '18'
-          cache: 'npm'
-
-      - name: Install Dependencies
-        run: npm install
-
-      # BƯỚC QUAN TRỌNG: Cài đặt Chrome cho Puppeteer trên Ubuntu
-      - name: Install Google Chrome
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y google-chrome-stable
-
-      - name: Chạy Script
+          node-version: '20'
+      - name: Install
+        run: npm install puppeteer axios
+      - name: Run
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
