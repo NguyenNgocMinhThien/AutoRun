@@ -1,10 +1,9 @@
 {
   "name": "indeed-auto-scraper",
   "version": "1.0.0",
-  "description": "Auto scrape Indeed jobs and send to Telegram",
   "main": "scraper.js",
   "dependencies": {
     "axios": "^1.6.0",
-    "puppeteer": "^21.5.0"
+    "puppeteer": "^22.6.0" 
   }
 }

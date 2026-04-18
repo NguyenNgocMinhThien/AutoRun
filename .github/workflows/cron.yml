@@ -19,11 +19,10 @@ jobs:
           node-version: '20'
 
       - name: Install Dependencies
-        # Thêm biến PUPPETEER_SKIP_CHROMIUM_DOWNLOAD để cài đặt siêu tốc
         run: |
-          export PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-          npm install axios puppeteer
-
+          npm install puppeteer@latest axios@latest
+        env:
+          PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: 'true'
       - name: Install Google Chrome
         run: |
           sudo apt-get update
