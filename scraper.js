@@ -20,10 +20,10 @@ async function runScraper() {
     const browser = await puppeteer.launch({
         headless: "new",
         args: [
-            '--no-sandbox', 
+            '--no-sandbox',
             '--disable-setuid-sandbox',
-            '--disable-blink-features=AutomationControlled', // Ẩn dấu vết bot
-            '--window-size=1920,1080'
+            '--disable-blink-features=AutomationControlled', // Ẩn cờ báo hiệu là robot
+            '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         ]
     });
 
@@ -38,28 +38,35 @@ async function runScraper() {
         try {
             console.log(`🔍 Đang thử truy cập: ${kw}`);
             await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
-            
+
             // Chờ ngẫu nhiên từ 3-7 giây để giống người đọc bài
             await new Promise(r => setTimeout(r, Math.floor(Math.random() * 4000) + 3000));
 
             const jobs = await page.evaluate(() => {
-                const results = [];
-                const cards = document.querySelectorAll('.job_seen_beacon');
-                cards.forEach(card => {
+                let results = [];
+                document.querySelectorAll('.job_seen_beacon').forEach(card => {
                     const title = card.querySelector('h2.jobTitle')?.innerText || "";
-                    const salaryText = card.querySelector('.salary-snippet-container')?.innerText || "";
-                    const link = card.querySelector('h2.jobTitle a')?.href || "";
-                    
-                    // Logic lọc lương: >30/hr hoặc >60k/yr
-                    let valid = false;
-                    const s = salaryText.toLowerCase().replace(/,/g, '');
-                    const m = s.match(/\d+/);
-                    if (m) {
-                        const n = parseInt(m[0]);
-                        if ((s.includes('hour') && n >= 30) || (s.includes('year') && n >= 60) || n >= 60000) valid = true;
-                    } else { valid = true; } // Giữ job ko lương
+                    const salaryText = card.querySelector('.salary-snippet-container')?.innerText ||
+                        card.querySelector('.estimated-salary-container')?.innerText || "";
 
-                    if (title && valid) results.push({ title, salary: salaryText, link });
+                    // Logic lọc: Min $60k/năm hoặc $30/giờ
+                    let isValidSalary = false;
+                    if (salaryText) {
+                        const s = salaryText.toLowerCase().replace(/,/g, '');
+                        const num = parseInt(s.match(/\d+/));
+                        if (s.includes('year') && num >= 60000) isValidSalary = true;
+                        if (s.includes('hour') && num >= 30) isValidSalary = true;
+                    } else {
+                        isValidSalary = true; // Giữ lại các job không ghi lương để sếp check
+                    }
+
+                    if (isValidSalary) {
+                        results.push({
+                            title,
+                            salary: salaryText,
+                            link: card.querySelector('h2.jobTitle a')?.href
+                        });
+                    }
                 });
                 return results;
             });
@@ -74,7 +81,7 @@ async function runScraper() {
     if (allJobs.length > 0) {
         let msg = `<b>✅ ĐÃ TÌM THẤY ${allJobs.length} JOB PHÙ HỢP</b>\n\n`;
         allJobs.slice(0, 10).forEach((j, i) => {
-            msg += `${i+1}. <b>${j.title}</b>\n💰 ${j.salary || 'Thỏa thuận'}\n🔗 <a href="${j.link}">Link</a>\n\n`;
+            msg += `${i + 1}. <b>${j.title}</b>\n💰 ${j.salary || 'Thỏa thuận'}\n🔗 <a href="${j.link}">Link</a>\n\n`;
         });
         await sendTelegramAlert(msg);
     } else {
