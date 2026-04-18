@@ -37,69 +37,87 @@ async function sendTelegramFile(filePath) {
 }
 
 async function runScraper() {
-    console.log("🚀 Đang khởi động phương án HTTP Request tàng hình...");
+    console.log("🚀 Khởi động Scraper với cơ chế tự động thử lại (Anti-500)...");
     let allJobs = [];
 
     for (const kw of KEYWORDS) {
-        // Indeed Canada URL
         const targetUrl = `https://ca.indeed.com/jobs?q=${encodeURIComponent(kw + ' $60,000')}&l=Vancouver%2C+BC&radius=25&fromage=3`;
-        
-        console.log(`🔍 Đang lấy dữ liệu cho: ${kw}`);
+        let attempts = 0;
+        let success = false;
+        const maxAttempts = 3;
 
-        try {
-            const response = await axios.get('http://api.scraperapi.com', {
-                params: {
-                    api_key: process.env.SCRAPER_API_KEY, //
-                    url: targetUrl,
-                    render: 'true',       
-                    premium: 'true',      
-                    country_code: 'ca'    
-                },
-                timeout: 90000
-            });
+        while (attempts < maxAttempts && !success) {
+            attempts++;
+            console.log(`🔍 Đang quét: ${kw} (Lần thử ${attempts}/${maxAttempts})...`);
 
-            const $ = cheerio.load(response.data);
-            let count = 0;
+            try {
+                const response = await axios.get('http://api.scraperapi.com', {
+                    params: {
+                        api_key: process.env.SCRAPER_API_KEY,
+                        url: targetUrl,
+                        render: 'true',       // Ép render JS cho Indeed
+                        premium: 'true',      // Dùng IP dân cư Canada
+                        country_code: 'ca'    
+                    },
+                    timeout: 120000 // Tăng timeout lên 120s để tránh lỗi mạng
+                });
 
-            $('.job_seen_beacon, .resultContent, [class*="jobCard"]').each((i, el) => {
-                const title = $(el).find('h2.jobTitle, a[id^="job_"]').text().trim().replace(/new/g, '');
-                const salary = $(el).find('.salary-snippet-container, .estimated-salary-container, [class*="salary"]').text().trim() || "N/A";
-                const linkSuffix = $(el).find('a[data-jk], h2.jobTitle a').attr('href');
+                const $ = cheerio.load(response.data);
+                let count = 0;
 
-                if (title && title !== "N/A") {
-                    allJobs.push({
-                        Title: title,
-                        Salary: salary,
-                        Link: linkSuffix ? (linkSuffix.startsWith('http') ? linkSuffix : 'https://ca.indeed.com' + linkSuffix) : "N/A"
-                    });
-                    count++;
+                $('.job_seen_beacon, .resultContent, [class*="jobCard"]').each((i, el) => {
+                    const title = $(el).find('h2.jobTitle, a[id^="job_"]').text().trim().replace(/new/g, '');
+                    const salary = $(el).find('.salary-snippet-container, .estimated-salary-container, [class*="salary"]').text().trim() || "N/A";
+                    const linkSuffix = $(el).find('a[data-jk], h2.jobTitle a').attr('href');
+
+                    if (title && title !== "N/A") {
+                        allJobs.push({
+                            Title: title,
+                            Salary: salary,
+                            Link: linkSuffix ? (linkSuffix.startsWith('http') ? linkSuffix : 'https://ca.indeed.com' + linkSuffix) : "N/A"
+                        });
+                        count++;
+                    }
+                });
+
+                if (count > 0) {
+                    console.log(`✅ Thành công: Lấy được ${count} jobs cho ${kw}`);
+                    success = true;
+                } else {
+                    console.log(`⚠️ Trang trống cho ${kw}, có thể cần thử lại...`);
+                    throw new Error("Empty Page");
                 }
-            });
 
-            console.log(`✅ Thành công: Lấy được ${count} jobs cho ${kw}`);
-
-        } catch (err) {
-            console.log(`❌ Lỗi tại ${kw}: ${err.message}`);
+            } catch (err) {
+                const status = err.response ? err.response.status : "Timeout";
+                console.log(`⚠️ Lỗi ${status} tại ${kw}.`);
+                
+                if (attempts < maxAttempts) {
+                    console.log(`⏳ Đang đợi 15 giây để thử lại lần nữa...`);
+                    await new Promise(r => setTimeout(r, 15000)); // Đợi lâu hơn để ScraperAPI nhả luồng
+                } else {
+                    console.log(`❌ Đã thử ${maxAttempts} lần nhưng vẫn thất bại cho ${kw}`);
+                }
+            }
         }
         
-        await new Promise(r => setTimeout(r, 4000));
+        // Nghỉ 5 giây giữa các từ khóa để không làm quá tải API
+        await new Promise(r => setTimeout(r, 5000));
     }
 
+    // Xuất kết quả cuối cùng
     if (allJobs.length > 0) {
-        // 1. Tạo file Excel
         const fileName = "Indeed_Jobs.xlsx";
         const worksheet = XLSX.utils.json_to_sheet(allJobs);
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, "Jobs");
         XLSX.writeFile(workbook, fileName);
         
-        // 2. Gửi thông báo và file qua Telegram
         await sendTelegramAlert(`✅ <b>QUÉT THÀNH CÔNG!</b>\nTìm thấy <b>${allJobs.length}</b> jobs mới tại Vancouver.`);
         await sendTelegramFile(fileName);
-        
-        console.log("🚀 Hoàn tất mọi công việc!");
+        console.log("🚀 Hoàn tất! Đã gửi file qua Telegram.");
     } else {
-        await sendTelegramAlert("⚠️ <b>THÔNG BÁO:</b> Đã quét nhưng không lấy được dữ liệu. Kiểm tra lại ScraperAPI.");
+        await sendTelegramAlert("⚠️ <b>THÔNG BÁO:</b> Sau nhiều lần thử, vẫn không lấy được dữ liệu job nào.");
     }
 }
 
