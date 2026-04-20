@@ -59,7 +59,7 @@ async function sendToTeamsGraph(jobCount, filePath) {
         const fileContent = fs.readFileSync(filePath);
         const uploadResponse = await client.api(`/me/drive/root:/JobReports/${filePath}:/content`)
             .put(fileContent);
-        
+
         const fileUrl = uploadResponse.webUrl;
 
         // 2. Gửi tin nhắn vào cuộc Chat cụ thể
@@ -75,8 +75,9 @@ async function sendToTeamsGraph(jobCount, filePath) {
         };
 
         // Dùng API /chats/ thay vì /teams/ hay /channels/
+        // Gửi vào cuộc hội thoại Group Chat
         await client.api(`/chats/${process.env.TEAMS_CHANNEL_ID}/messages`).post(message);
-        
+
         console.log("✅ Đã gửi báo cáo vào cuộc chat riêng!");
     } catch (e) {
         console.error("❌ Lỗi gửi Chat:", e.message);
@@ -142,18 +143,18 @@ async function runScraper() {
     }
 
     if (allJobs.length > 0) {
-    const fileName = "Indeed_Jobs.xlsx";
-    const worksheet = XLSX.utils.json_to_sheet(allJobs);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Jobs");
-    XLSX.writeFile(workbook, fileName);
+        const fileName = "Indeed_Jobs.xlsx";
+        const worksheet = XLSX.utils.json_to_sheet(allJobs);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Jobs");
+        XLSX.writeFile(workbook, fileName);
 
-    await Promise.all([
-        sendTelegramAlert(`✅ Tìm thấy ${allJobs.length} jobs!`),
-        sendTelegramFile(fileName),
-        sendToTeamsGraph(allJobs.length, fileName) // Sử dụng hàm Graph API mới
-    ]);
-    console.log("🏁 Hoàn tất báo cáo qua tài khoản Bot riêng.");
+        await Promise.all([
+            sendTelegramAlert(`✅ Tìm thấy ${allJobs.length} jobs!`),
+            sendTelegramFile(fileName),
+            sendToTeamsGraph(allJobs.length, fileName) // Sử dụng hàm Graph API mới
+        ]);
+        console.log("🏁 Hoàn tất báo cáo qua tài khoản Bot riêng.");
     } else {
         await sendTelegramAlert("⚠️ Không lấy được dữ liệu job nào.");
     }
