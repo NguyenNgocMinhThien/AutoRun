@@ -34,18 +34,22 @@ async function sendTelegramFile(filePath) {
     } catch (e) { console.error("❌ Telegram File Error:", e.message); }
 }
 
-// --- HÀM TẢI FILE LÊN DỊCH VỤ LƯU TRỮ TẠM THỜI ---
+// --- HÀM TẢI FILE LÊN CATBOX (HỖ TRỢ DOWNLOAD TRỰC TIẾP) ---
 async function uploadToPublicLink(filePath) {
     try {
         const form = new FormData();
-        form.append('file', fs.createReadStream(filePath));
-        // file.io sẽ xóa file sau khi tải xong 1 lần hoặc sau 14 ngày để bảo mật
-        const response = await axios.post('https://file.io', form, {
+        form.append('reqtype', 'fileupload');
+        form.append('fileToUpload', fs.createReadStream(filePath));
+
+        const response = await axios.post('https://catbox.moe/user/api.php', form, {
             headers: form.getHeaders()
         });
-        return response.data.link; // Trả về link tải trực tiếp
+        
+        // Catbox trả về link trực tiếp dạng: https://files.catbox.moe/xxxxxx.xlsx
+        console.log("🔗 Link tải trực tiếp:", response.data);
+        return response.data; 
     } catch (e) {
-        console.error("❌ Lỗi upload file:", e.message);
+        console.error("❌ Lỗi upload Catbox:", e.message);
         return null;
     }
 }
