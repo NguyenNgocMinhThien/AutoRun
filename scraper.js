@@ -134,7 +134,7 @@ async function runScraper() {
     }
 
     if (allJobs.length > 0) {
-        const fileName = "Indeed_Jobs.xlsx";
+        const fileName = `Indeed_Jobs_${Math.floor(Math.random() * 1000)}.xlsx`;
         const worksheet = XLSX.utils.json_to_sheet(allJobs);
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, "Jobs");
