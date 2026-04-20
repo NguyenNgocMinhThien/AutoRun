@@ -88,18 +88,18 @@ async function sendToTeams(jobCount) {
 }
 // --- HÀM CHẠY CHÍNH ---
 async function runScraper() {
-    console.log("🚀 Khởi động Scraper (Anti-500 + MS Teams)...");
+    console.log("🚀 Khởi động Scraper siêu bền bỉ (Quét tối thiểu 3 lần/từ khóa)...");
     let allJobs = [];
 
     for (const kw of KEYWORDS) {
         const targetUrl = `https://ca.indeed.com/jobs?q=${encodeURIComponent(kw + ' $60,000')}&l=Vancouver%2C+BC&radius=25&fromage=3`;
         let attempts = 0;
         let success = false;
-        const maxAttempts = 2; // Giảm xuống 2 lần để tăng tốc nếu thực sự lỗi
+        const maxAttempts = 3; // QUYẾT TÂM QUÉT 3 LẦN THEO Ý BẠN
 
         while (attempts < maxAttempts && !success) {
             attempts++;
-            console.log(`🔍 Đang quét: ${kw} (Lần ${attempts})...`);
+            console.log(`🔍 Đang quét: ${kw} (Lần thử ${attempts}/${maxAttempts})...`);
 
             try {
                 const response = await axios.get('http://api.scraperapi.com', {
@@ -108,13 +108,16 @@ async function runScraper() {
                         url: targetUrl,
                         render: 'true',
                         premium: 'true',
-                        country_code: 'ca'
+                        country_code: 'ca',
+                        // Thêm tham số này để ScraperAPI tự động chọn IP sạch nhất
+                        session_number: Math.floor(Math.random() * 10000) 
                     },
-                    timeout: 90000 // Giảm timeout xuống 90s để không treo quá lâu
+                    timeout: 120000 // Chờ tối đa 2 phút để xử lý trang nặng
                 });
 
                 const $ = cheerio.load(response.data);
                 let count = 0;
+
                 $('.job_seen_beacon, .resultContent, [class*="jobCard"]').each((i, el) => {
                     const title = $(el).find('h2.jobTitle, a[id^="job_"]').text().trim().replace(/new/g, '');
                     const salary = $(el).find('.salary-snippet-container, .estimated-salary-container, [class*="salary"]').text().trim() || "N/A";
@@ -131,18 +134,25 @@ async function runScraper() {
                 });
 
                 if (count > 0) {
-                    console.log(`✅ Thành công: ${count} jobs cho ${kw}`);
+                    console.log(`✅ Thành công: Lấy được ${count} jobs cho ${kw}`);
                     success = true;
                 } else {
+                    console.log(`⚠️ Trang trống tại ${kw}, đang ép thử lại...`);
                     throw new Error("Empty Page");
                 }
+
             } catch (err) {
-                console.log(`⚠️ Lỗi tại ${kw}. Đang thử lại nhanh...`);
-                if (attempts < maxAttempts) await new Promise(r => setTimeout(r, 5000)); // Đợi ngắn hơn (5s thay vì 15s)
+                const status = err.response ? err.response.status : "Timeout";
+                console.log(`⚠️ Lỗi ${status} tại ${kw}.`);
+                
+                if (attempts < maxAttempts) {
+                    // NẾU LỖI 500, NGHỈ 20 GIÂY ĐỂ ĐỔI IP MỚI
+                    console.log(`⏳ Đang nghỉ 20 giây để hệ thống đổi Proxy mới...`);
+                    await new Promise(r => setTimeout(r, 20000));
+                }
             }
         }
-        // Giảm thời gian nghỉ giữa các từ khóa từ 5s xuống 2s để tăng năng suất
-        await new Promise(r => setTimeout(r, 2000));
+        await new Promise(r => setTimeout(r, 3000));
     }
 
     if (allJobs.length > 0) {
