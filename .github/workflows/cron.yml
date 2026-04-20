@@ -32,6 +32,7 @@ jobs:
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           TEAMS_CHANNEL_ID: ${{ secrets.TEAMS_CHANNEL_ID }}
           AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_USER_ID: ${{ secrets.AZURE_USER_ID }}
         run: node scraper.js
 
       - name: Upload Excel Report

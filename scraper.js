@@ -38,7 +38,7 @@ async function sendTelegramFile(filePath) {
 
 
 
-async function sendToTeamsGraph(jobCount, filePath) {
+async function sendToTeamsGraph(jobCount, fileLink) {
     const credential = new ClientSecretCredential(
         process.env.AZURE_TENANT_ID,
         process.env.AZURE_CLIENT_ID,
@@ -55,32 +55,23 @@ async function sendToTeamsGraph(jobCount, filePath) {
     });
 
     try {
-        const fileContent = fs.readFileSync(filePath);
-        const fileName = `Indeed_Jobs_${new Date().toISOString().split('T')[0]}.xlsx`;
-
-        // LƯU Ý: Với Application Permission, bạn phải dùng /users/{user-id} thay vì /me
-        // Bạn có thể lấy User ID của mình trong phần Overview của tài khoản trên Azure
-        const userId = process.env.AZURE_USER_ID; 
-
-        // 1. Upload file lên OneDrive của User chỉ định
-        const uploadResponse = await client.api(`/users/${userId}/drive/root:/JobReports/${fileName}:/content`)
-            .put(fileContent);
-        
-        const fileUrl = uploadResponse.webUrl;
-
-        // 2. Gửi tin nhắn vào Group Chat ID (mã 19:...)
+        // Gửi tin nhắn từ Bot riêng vào Group Chat
         const message = {
             body: {
                 contentType: "html",
-                content: `🚀 <b>CẬP NHẬT JOB MỚI</b><br>Tìm thấy ${jobCount} jobs.<br><a href="${fileUrl}">📥 Xem file Excel tại đây</a>`
+                content: `
+                    <b>🚀 CẬP NHẬT JOB MỚI</b><br>
+                    Tìm thấy <b>${jobCount} jobs</b> mới tại Vancouver.<br><br>
+                    <a href="${fileLink}">📥 TẢI FILE EXCEL TẠI ĐÂY</a>
+                `
             }
         };
 
+        // endpoint dành riêng cho Chat
         await client.api(`/chats/${process.env.TEAMS_CHANNEL_ID}/messages`).post(message);
-        
-        console.log("✅ Bot đã gửi báo cáo thành công mà không cần Delegated Flow!");
+        console.log("✅ Bot đã gửi tin nhắn thành công vào Group Chat!");
     } catch (e) {
-        console.error("❌ Graph API Error:", e.message);
+        console.error("❌ Lỗi gửi tin:", e.message);
     }
 }
 
