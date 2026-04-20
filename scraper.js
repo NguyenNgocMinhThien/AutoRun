@@ -33,16 +33,11 @@ async function sendTelegramFile(filePath) {
     } catch (e) { console.error("❌ Telegram File Error:", e.message); }
 }
 
-// --- HÀM TẢI FILE LÊN CATBOX (SỬA LẠI ĐỂ ĐẢM BẢO CÓ LINK TRỰC TIẾP) ---
+// --- HÀM TẢI FILE LÊN (CATBOX CHÍNH + LITTERBOX DỰ PHÒNG) ---
 async function uploadToPublicLink(filePath) {
-    // Chờ file được ghi xong hoàn toàn vào ổ đĩa trước khi upload
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    if (!fs.existsSync(filePath)) {
-        console.error("❌ File không tồn tại để upload!");
-        return null;
-    }
+    if (!fs.existsSync(filePath)) return null;
 
+    // Thử Catbox trước (Lưu trữ lâu dài)
     try {
         const form = new FormData();
         form.append('reqtype', 'fileupload');
@@ -50,18 +45,37 @@ async function uploadToPublicLink(filePath) {
 
         const response = await axios.post('https://catbox.moe/user/api.php', form, {
             headers: form.getHeaders(),
-            timeout: 60000 // Tăng timeout lên 60s cho file lớn
+            timeout: 30000
         });
         
-        if (response.data && typeof response.data === 'string' && response.data.includes('http')) {
-            console.log("🔗 Link tải trực tiếp mới:", response.data);
+        if (typeof response.data === 'string' && response.data.includes('http')) {
+            console.log("🔗 Link tải trực tiếp (Catbox):", response.data);
             return response.data; 
         }
-        return null;
     } catch (e) {
-        console.error("❌ Lỗi upload Catbox:", e.message);
-        return null;
+        console.warn("⚠️ Catbox lỗi 412, đang thử dịch vụ dự phòng Litterbox...");
     }
+
+    // Dự phòng: Litterbox (Link tồn tại trong 24h - Rất ổn định cho báo cáo ngày)
+    try {
+        const form = new FormData();
+        form.append('reqtype', 'fileupload');
+        form.append('time', '24h');
+        form.append('fileToUpload', fs.createReadStream(filePath));
+
+        const response = await axios.post('https://litterbox.catbox.moe/resources/internals/api.php', form, {
+            headers: form.getHeaders(),
+            timeout: 30000
+        });
+
+        if (typeof response.data === 'string' && response.data.includes('http')) {
+            console.log("🔗 Link tải trực tiếp (Litterbox):", response.data);
+            return response.data;
+        }
+    } catch (e) {
+        console.error("❌ Tất cả dịch vụ upload đều thất bại:", e.message);
+    }
+    return null;
 }
 
 // --- HÀM GỬI MS TEAMS ---
@@ -69,8 +83,8 @@ async function sendToTeams(jobCount, directDownloadLink) {
     const webhookUrl = process.env.MS_TEAMS_WEBHOOK;
     if (!webhookUrl) return;
 
-    // Nếu directDownloadLink bị null, nó sẽ trỏ về link chạy của GitHub thay vì trang chủ GitHub
-    const fallbackLink = `https://github.com/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
+    // Link dự phòng nếu upload lỗi hoàn toàn
+    const fallbackLink = `https://github.com/${process.env.GITHUB_REPOSITORY}/actions`;
     const finalLink = directDownloadLink || fallbackLink;
 
     const adaptiveCard = {
@@ -80,11 +94,11 @@ async function sendToTeams(jobCount, directDownloadLink) {
             "content": {
                 "type": "AdaptiveCard",
                 "body": [
-                    { "type": "TextBlock", "size": "Medium", "weight": "Bolder", "text": "🚀 CẬP NHẬT JOB MỚI TẠI VANCOUVER" },
+                    { "type": "TextBlock", "size": "Large", "weight": "Bolder", "text": "🚀 CẬP NHẬT JOB MỚI TẠI VANCOUVER" },
                     { "type": "FactSet", "facts": [
                         { "title": "Nguồn:", "value": "Indeed Canada" },
                         { "title": "Số lượng:", "value": `${jobCount} jobs` },
-                        { "title": "Trạng thái:", "value": "Sẵn sàng tải về ✅" }
+                        { "title": "Trạng thái:", "value": directDownloadLink ? "Tải về trực tiếp ✅" : "Tải qua GitHub ⚠️" }
                     ]}
                 ],
                 "actions": [{
@@ -100,11 +114,11 @@ async function sendToTeams(jobCount, directDownloadLink) {
 
     try {
         await axios.post(webhookUrl, adaptiveCard);
-        console.log("✅ Đã gửi nút tải trực tiếp vào Teams!");
+        console.log("✅ Đã gửi tin nhắn kèm nút tải vào Teams!");
     } catch (e) { console.error("❌ MS Teams Error:", e.message); }
 }
 
-// --- HÀM CHẠY CHÍNH (GIỮ NGUYÊN NHƯ YÊU CẦU) ---
+// --- HÀM CHẠY CHÍNH (GIỮ NGUYÊN LOGIC QUÉT CỦA BẠN) ---
 async function runScraper() {
     console.log("🚀 Khởi động Scraper siêu bền bỉ (Quét tối thiểu 3 lần/từ khóa)...");
     let allJobs = [];
@@ -113,12 +127,11 @@ async function runScraper() {
         const targetUrl = `https://ca.indeed.com/jobs?q=${encodeURIComponent(kw + ' $60,000')}&l=Vancouver%2C+BC&radius=25&fromage=3`;
         let attempts = 0;
         let success = false;
-
         const maxAttempts = 5;
+
         while (attempts < maxAttempts && !success) {
             attempts++;
             console.log(`🔍 Đang quét: ${kw} (Lần thử ${attempts}/${maxAttempts})...`);
-
             try {
                 const response = await axios.get('http://api.scraperapi.com', {
                     params: {
@@ -134,7 +147,6 @@ async function runScraper() {
 
                 const $ = cheerio.load(response.data);
                 let count = 0;
-
                 $('.job_seen_beacon, .resultContent, [class*="jobCard"]').each((i, el) => {
                     const title = $(el).find('h2.jobTitle, a[id^="job_"]').text().trim().replace(/new/g, '');
                     const salary = $(el).find('.salary-snippet-container, .estimated-salary-container, [class*="salary"]').text().trim() || "N/A";
@@ -157,18 +169,11 @@ async function runScraper() {
                     console.log(`⚠️ Trang trống tại ${kw}, đang ép thử lại...`);
                     throw new Error("Empty Page");
                 }
-
             } catch (err) {
-                const status = err.response ? err.response.status : "Timeout";
-                console.log(`⚠️ Lỗi ${status} tại ${kw}.`);
-
-                if (attempts < maxAttempts) {
-                    console.log(`⚠️ Lần ${attempts} vẫn lỗi. Đổi IP mới và thử lại ngay...`);
-                    await new Promise(r => setTimeout(r, 5000));
-                }
+                console.log(`⚠️ Lần ${attempts} lỗi. Thử lại...`);
+                if (attempts < maxAttempts) await new Promise(r => setTimeout(r, 5000));
             }
         }
-        await new Promise(r => setTimeout(r, 3000));
     }
 
     if (allJobs.length > 0) {
@@ -178,7 +183,7 @@ async function runScraper() {
         XLSX.utils.book_append_sheet(workbook, worksheet, "Jobs");
         XLSX.writeFile(workbook, fileName);
 
-        // Chờ tạo file xong rồi mới upload link
+        // Upload lấy link tải trực tiếp
         const directLink = await uploadToPublicLink(fileName);
 
         await Promise.all([
@@ -186,7 +191,6 @@ async function runScraper() {
             sendTelegramFile(fileName),
             sendToTeams(allJobs.length, directLink)
         ]);
-
         console.log("🏁 Hoàn tất! Đã gửi báo cáo đa kênh.");
     } else {
         await sendTelegramAlert("⚠️ Không lấy được dữ liệu job nào.");
