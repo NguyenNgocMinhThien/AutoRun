@@ -55,32 +55,32 @@ async function sendToTeamsGraph(jobCount, filePath) {
     });
 
     try {
-        // 1. Upload file lên OneDrive cá nhân để lấy link chia sẻ
         const fileContent = fs.readFileSync(filePath);
-        const uploadResponse = await client.api(`/me/drive/root:/JobReports/${filePath}:/content`)
-            .put(fileContent);
+        const fileName = `Indeed_Jobs_${new Date().toISOString().split('T')[0]}.xlsx`;
 
+        // LƯU Ý: Với Application Permission, bạn phải dùng /users/{user-id} thay vì /me
+        // Bạn có thể lấy User ID của mình trong phần Overview của tài khoản trên Azure
+        const userId = process.env.AZURE_USER_ID; 
+
+        // 1. Upload file lên OneDrive của User chỉ định
+        const uploadResponse = await client.api(`/users/${userId}/drive/root:/JobReports/${fileName}:/content`)
+            .put(fileContent);
+        
         const fileUrl = uploadResponse.webUrl;
 
-        // 2. Gửi tin nhắn vào cuộc Chat cụ thể
+        // 2. Gửi tin nhắn vào Group Chat ID (mã 19:...)
         const message = {
             body: {
                 contentType: "html",
-                content: `
-                    <b>🚀 CẬP NHẬT JOB MỚI</b><br>
-                    Tìm thấy <b>${jobCount} jobs</b> trong hôm nay.<br><br>
-                    <a href="${fileUrl}">📥 Tải File Excel Tại Đây</a>
-                `
+                content: `🚀 <b>CẬP NHẬT JOB MỚI</b><br>Tìm thấy ${jobCount} jobs.<br><a href="${fileUrl}">📥 Xem file Excel tại đây</a>`
             }
         };
 
-        // Dùng API /chats/ thay vì /teams/ hay /channels/
-        // Gửi vào cuộc hội thoại Group Chat
         await client.api(`/chats/${process.env.TEAMS_CHANNEL_ID}/messages`).post(message);
-
-        console.log("✅ Đã gửi báo cáo vào cuộc chat riêng!");
+        
+        console.log("✅ Bot đã gửi báo cáo thành công mà không cần Delegated Flow!");
     } catch (e) {
-        console.error("❌ Lỗi gửi Chat:", e.message);
+        console.error("❌ Graph API Error:", e.message);
     }
 }
 
