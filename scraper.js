@@ -82,8 +82,8 @@ async function sendToTeams(jobCount) {
     try {
         await axios.post(webhookUrl, adaptiveCard);
         console.log("✅ Đã gửi thông báo kèm nút bấm vào MS Teams!");
-    } catch (e) { 
-        console.error("❌ MS Teams Error:", e.message); 
+    } catch (e) {
+        console.error("❌ MS Teams Error:", e.message);
     }
 }
 // --- HÀM CHẠY CHÍNH ---
@@ -109,10 +109,12 @@ async function runScraper() {
                         render: 'true',
                         premium: 'true',
                         country_code: 'ca',
-                        // Thêm tham số này để ScraperAPI tự động chọn IP sạch nhất
-                        session_number: Math.floor(Math.random() * 10000) 
+                        // THAY ĐỔI QUAN TRỌNG Ở ĐÂY:
+                        session_number: Math.floor(Math.random() * 100000), // Ép đổi IP liên tục
+                        keep_headers: 'true', // Giữ nguyên headers của trình duyệt
+                        device_type: 'desktop' // Chỉ định thiết bị là máy tính để bàn
                     },
-                    timeout: 120000 // Chờ tối đa 2 phút để xử lý trang nặng
+                    timeout: 120000
                 });
 
                 const $ = cheerio.load(response.data);
@@ -144,7 +146,7 @@ async function runScraper() {
             } catch (err) {
                 const status = err.response ? err.response.status : "Timeout";
                 console.log(`⚠️ Lỗi ${status} tại ${kw}.`);
-                
+
                 if (attempts < maxAttempts) {
                     // NẾU LỖI 500, NGHỈ 20 GIÂY ĐỂ ĐỔI IP MỚI
                     console.log(`⏳ Đang nghỉ 20 giây để hệ thống đổi Proxy mới...`);
@@ -161,14 +163,14 @@ async function runScraper() {
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, "Jobs");
         XLSX.writeFile(workbook, fileName);
-        
+
         // Gửi báo cáo song song cho cả 2 kênh để tiết kiệm thời gian
         await Promise.all([
             sendTelegramAlert(`✅ <b>QUÉT THÀNH CÔNG!</b>\nTìm thấy <b>${allJobs.length}</b> jobs mới.`),
             sendTelegramFile(fileName),
             sendToTeams(allJobs.length)
         ]);
-        
+
         console.log("🏁 Hoàn tất! Đã gửi báo cáo đa kênh.");
     } else {
         await sendTelegramAlert("⚠️ Không lấy được dữ liệu job nào.");
