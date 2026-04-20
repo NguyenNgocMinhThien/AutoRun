@@ -3,7 +3,10 @@
   "version": "1.0.0",
   "main": "scraper.js",
   "dependencies": {
+    "@azure/identity": "^4.13.1",
+    "@microsoft/microsoft-graph-client": "^3.0.7",
     "axios": "^1.15.0",
+    "isomorphic-fetch": "^3.0.0",
     "puppeteer": "^22.6.0",
     "puppeteer-extra": "^3.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2",

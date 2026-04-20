@@ -3,6 +3,9 @@ const XLSX = require('xlsx');
 const cheerio = require('cheerio');
 const fs = require('fs');
 const FormData = require('form-data');
+const { Client } = require('@microsoft/microsoft-graph-client');
+const { ClientSecretCredential } = require('@azure/identity');
+require('isomorphic-fetch'); // Cần thiết cho Graph Client
 
 const KEYWORDS = ["Analyst", "CFA", "CEO", "Data Science", "FP&A"];
 
@@ -33,89 +36,51 @@ async function sendTelegramFile(filePath) {
     } catch (e) { console.error("❌ Telegram File Error:", e.message); }
 }
 
-// --- HÀM TẢI FILE LÊN (CATBOX CHÍNH + LITTERBOX DỰ PHÒNG) ---
-async function uploadToPublicLink(filePath) {
-    if (!fs.existsSync(filePath)) return null;
 
-    // Thử Catbox trước (Lưu trữ lâu dài)
-    try {
-        const form = new FormData();
-        form.append('reqtype', 'fileupload');
-        form.append('fileToUpload', fs.createReadStream(filePath));
 
-        const response = await axios.post('https://catbox.moe/user/api.php', form, {
-            headers: form.getHeaders(),
-            timeout: 30000
-        });
-        
-        if (typeof response.data === 'string' && response.data.includes('http')) {
-            console.log("🔗 Link tải trực tiếp (Catbox):", response.data);
-            return response.data; 
-        }
-    } catch (e) {
-        console.warn("⚠️ Catbox lỗi 412, đang thử dịch vụ dự phòng Litterbox...");
-    }
+async function sendToTeamsGraph(jobCount, filePath) {
+    const credential = new ClientSecretCredential(
+        process.env.AZURE_TENANT_ID,
+        process.env.AZURE_CLIENT_ID,
+        process.env.AZURE_CLIENT_SECRET
+    );
 
-    // Dự phòng: Litterbox (Link tồn tại trong 24h - Rất ổn định cho báo cáo ngày)
-    try {
-        const form = new FormData();
-        form.append('reqtype', 'fileupload');
-        form.append('time', '24h');
-        form.append('fileToUpload', fs.createReadStream(filePath));
-
-        const response = await axios.post('https://litterbox.catbox.moe/resources/internals/api.php', form, {
-            headers: form.getHeaders(),
-            timeout: 30000
-        });
-
-        if (typeof response.data === 'string' && response.data.includes('http')) {
-            console.log("🔗 Link tải trực tiếp (Litterbox):", response.data);
-            return response.data;
-        }
-    } catch (e) {
-        console.error("❌ Tất cả dịch vụ upload đều thất bại:", e.message);
-    }
-    return null;
-}
-
-// --- HÀM GỬI MS TEAMS ---
-async function sendToTeams(jobCount, directDownloadLink) {
-    const webhookUrl = process.env.MS_TEAMS_WEBHOOK;
-    if (!webhookUrl) return;
-
-    // Link dự phòng nếu upload lỗi hoàn toàn
-    const fallbackLink = `https://github.com/${process.env.GITHUB_REPOSITORY}/actions`;
-    const finalLink = directDownloadLink || fallbackLink;
-
-    const adaptiveCard = {
-        "type": "message",
-        "attachments": [{
-            "contentType": "application/vnd.microsoft.card.adaptive",
-            "content": {
-                "type": "AdaptiveCard",
-                "body": [
-                    { "type": "TextBlock", "size": "Large", "weight": "Bolder", "text": "🚀 CẬP NHẬT JOB MỚI TẠI VANCOUVER" },
-                    { "type": "FactSet", "facts": [
-                        { "title": "Nguồn:", "value": "Indeed Canada" },
-                        { "title": "Số lượng:", "value": `${jobCount} jobs` },
-                        { "title": "Trạng thái:", "value": directDownloadLink ? "Tải về trực tiếp ✅" : "Tải qua GitHub ⚠️" }
-                    ]}
-                ],
-                "actions": [{
-                    "type": "Action.OpenUrl",
-                    "title": "📥 TẢI FILE EXCEL VỀ MÁY",
-                    "url": finalLink
-                }],
-                "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
-                "version": "1.4"
+    const client = Client.initWithMiddleware({
+        authProvider: {
+            getAccessToken: async () => {
+                const token = await credential.getToken("https://graph.microsoft.com/.default");
+                return token.token;
             }
-        }]
-    };
+        }
+    });
 
     try {
-        await axios.post(webhookUrl, adaptiveCard);
-        console.log("✅ Đã gửi tin nhắn kèm nút tải vào Teams!");
-    } catch (e) { console.error("❌ MS Teams Error:", e.message); }
+        // 1. Upload file lên OneDrive cá nhân để lấy link chia sẻ
+        const fileContent = fs.readFileSync(filePath);
+        const uploadResponse = await client.api(`/me/drive/root:/JobReports/${filePath}:/content`)
+            .put(fileContent);
+        
+        const fileUrl = uploadResponse.webUrl;
+
+        // 2. Gửi tin nhắn vào cuộc Chat cụ thể
+        const message = {
+            body: {
+                contentType: "html",
+                content: `
+                    <b>🚀 CẬP NHẬT JOB MỚI</b><br>
+                    Tìm thấy <b>${jobCount} jobs</b> trong hôm nay.<br><br>
+                    <a href="${fileUrl}">📥 Tải File Excel Tại Đây</a>
+                `
+            }
+        };
+
+        // Dùng API /chats/ thay vì /teams/ hay /channels/
+        await client.api(`/chats/${process.env.TEAMS_CHANNEL_ID}/messages`).post(message);
+        
+        console.log("✅ Đã gửi báo cáo vào cuộc chat riêng!");
+    } catch (e) {
+        console.error("❌ Lỗi gửi Chat:", e.message);
+    }
 }
 
 // --- HÀM CHẠY CHÍNH (GIỮ NGUYÊN LOGIC QUÉT CỦA BẠN) ---
@@ -177,21 +142,18 @@ async function runScraper() {
     }
 
     if (allJobs.length > 0) {
-        const fileName = "Indeed_Jobs.xlsx";
-        const worksheet = XLSX.utils.json_to_sheet(allJobs);
-        const workbook = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(workbook, worksheet, "Jobs");
-        XLSX.writeFile(workbook, fileName);
+    const fileName = "Indeed_Jobs.xlsx";
+    const worksheet = XLSX.utils.json_to_sheet(allJobs);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Jobs");
+    XLSX.writeFile(workbook, fileName);
 
-        // Upload lấy link tải trực tiếp
-        const directLink = await uploadToPublicLink(fileName);
-
-        await Promise.all([
-            sendTelegramAlert(`✅ Tìm thấy ${allJobs.length} jobs!`),
-            sendTelegramFile(fileName),
-            sendToTeams(allJobs.length, directLink)
-        ]);
-        console.log("🏁 Hoàn tất! Đã gửi báo cáo đa kênh.");
+    await Promise.all([
+        sendTelegramAlert(`✅ Tìm thấy ${allJobs.length} jobs!`),
+        sendTelegramFile(fileName),
+        sendToTeamsGraph(allJobs.length, fileName) // Sử dụng hàm Graph API mới
+    ]);
+    console.log("🏁 Hoàn tất báo cáo qua tài khoản Bot riêng.");
     } else {
         await sendTelegramAlert("⚠️ Không lấy được dữ liệu job nào.");
     }
