@@ -106,13 +106,11 @@ async function runScraper() {
                     params: {
                         api_key: process.env.SCRAPER_API_KEY,
                         url: targetUrl,
+                        // THAY ĐỔI CHIẾN THUẬT Ở ĐÂY:
+                        proxy_type: 'residential', // Ép dùng IP dân cư (Cực mạnh)
                         render: 'true',
-                        premium: 'true',
-                        country_code: 'ca',
-                        // THAY ĐỔI QUAN TRỌNG Ở ĐÂY:
-                        session_number: Math.floor(Math.random() * 100000), // Ép đổi IP liên tục
-                        keep_headers: 'true', // Giữ nguyên headers của trình duyệt
-                        device_type: 'desktop' // Chỉ định thiết bị là máy tính để bàn
+                        country_code: 'us', // Thử dùng US để lách hệ thống Canada đang bị soi
+                        session_number: Math.floor(Math.random() * 100000)
                     },
                     timeout: 120000
                 });
