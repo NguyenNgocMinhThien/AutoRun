@@ -95,8 +95,8 @@ async function runScraper() {
         const targetUrl = `https://ca.indeed.com/jobs?q=${encodeURIComponent(kw + ' $60,000')}&l=Vancouver%2C+BC&radius=25&fromage=3`;
         let attempts = 0;
         let success = false;
-        const maxAttempts = 3; // QUYẾT TÂM QUÉT 3 LẦN THEO Ý BẠN
 
+        const maxAttempts = 5;
         while (attempts < maxAttempts && !success) {
             attempts++;
             console.log(`🔍 Đang quét: ${kw} (Lần thử ${attempts}/${maxAttempts})...`);
@@ -149,8 +149,8 @@ async function runScraper() {
 
                 if (attempts < maxAttempts) {
                     // NẾU LỖI 500, NGHỈ 20 GIÂY ĐỂ ĐỔI IP MỚI
-                    console.log(`⏳ Đang nghỉ 20 giây để hệ thống đổi Proxy mới...`);
-                    await new Promise(r => setTimeout(r, 20000));
+                    console.log(`⚠️ Lần ${attempts} vẫn lỗi. Đổi IP mới và thử lại ngay...`);
+                    await new Promise(r => setTimeout(r, 5000));
                 }
             }
         }
