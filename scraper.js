@@ -18,7 +18,6 @@ async function sendTelegramAlert(message) {
     } catch (e) { console.error("❌ Telegram Message Error:", e.message); }
 }
 
-
 async function sendTelegramFile(filePath) {
     const botToken = process.env.TELEGRAM_TOKEN;
     const chatId = process.env.TELEGRAM_CHAT_ID;
@@ -34,20 +33,31 @@ async function sendTelegramFile(filePath) {
     } catch (e) { console.error("❌ Telegram File Error:", e.message); }
 }
 
-// --- HÀM TẢI FILE LÊN CATBOX (HỖ TRỢ DOWNLOAD TRỰC TIẾP) ---
+// --- HÀM TẢI FILE LÊN CATBOX (SỬA LẠI ĐỂ ĐẢM BẢO CÓ LINK TRỰC TIẾP) ---
 async function uploadToPublicLink(filePath) {
+    // Chờ file được ghi xong hoàn toàn vào ổ đĩa trước khi upload
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    if (!fs.existsSync(filePath)) {
+        console.error("❌ File không tồn tại để upload!");
+        return null;
+    }
+
     try {
         const form = new FormData();
         form.append('reqtype', 'fileupload');
         form.append('fileToUpload', fs.createReadStream(filePath));
 
         const response = await axios.post('https://catbox.moe/user/api.php', form, {
-            headers: form.getHeaders()
+            headers: form.getHeaders(),
+            timeout: 60000 // Tăng timeout lên 60s cho file lớn
         });
         
-        // Catbox trả về link trực tiếp dạng: https://files.catbox.moe/xxxxxx.xlsx
-        console.log("🔗 Link tải trực tiếp:", response.data);
-        return response.data; 
+        if (response.data && typeof response.data === 'string' && response.data.includes('http')) {
+            console.log("🔗 Link tải trực tiếp mới:", response.data);
+            return response.data; 
+        }
+        return null;
     } catch (e) {
         console.error("❌ Lỗi upload Catbox:", e.message);
         return null;
@@ -59,6 +69,10 @@ async function sendToTeams(jobCount, directDownloadLink) {
     const webhookUrl = process.env.MS_TEAMS_WEBHOOK;
     if (!webhookUrl) return;
 
+    // Nếu directDownloadLink bị null, nó sẽ trỏ về link chạy của GitHub thay vì trang chủ GitHub
+    const fallbackLink = `https://github.com/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
+    const finalLink = directDownloadLink || fallbackLink;
+
     const adaptiveCard = {
         "type": "message",
         "attachments": [{
@@ -69,13 +83,14 @@ async function sendToTeams(jobCount, directDownloadLink) {
                     { "type": "TextBlock", "size": "Medium", "weight": "Bolder", "text": "🚀 CẬP NHẬT JOB MỚI TẠI VANCOUVER" },
                     { "type": "FactSet", "facts": [
                         { "title": "Nguồn:", "value": "Indeed Canada" },
-                        { "title": "Số lượng:", "value": `${jobCount} jobs` }
+                        { "title": "Số lượng:", "value": `${jobCount} jobs` },
+                        { "title": "Trạng thái:", "value": "Sẵn sàng tải về ✅" }
                     ]}
                 ],
                 "actions": [{
                     "type": "Action.OpenUrl",
                     "title": "📥 TẢI FILE EXCEL VỀ MÁY",
-                    "url": directDownloadLink || "https://github.com"
+                    "url": finalLink
                 }],
                 "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
                 "version": "1.4"
@@ -88,7 +103,8 @@ async function sendToTeams(jobCount, directDownloadLink) {
         console.log("✅ Đã gửi nút tải trực tiếp vào Teams!");
     } catch (e) { console.error("❌ MS Teams Error:", e.message); }
 }
-// --- HÀM CHẠY CHÍNH ---
+
+// --- HÀM CHẠY CHÍNH (GIỮ NGUYÊN NHƯ YÊU CẦU) ---
 async function runScraper() {
     console.log("🚀 Khởi động Scraper siêu bền bỉ (Quét tối thiểu 3 lần/từ khóa)...");
     let allJobs = [];
@@ -108,10 +124,9 @@ async function runScraper() {
                     params: {
                         api_key: process.env.SCRAPER_API_KEY,
                         url: targetUrl,
-                        // THAY ĐỔI CHIẾN THUẬT Ở ĐÂY:
-                        proxy_type: 'residential', // Ép dùng IP dân cư (Cực mạnh)
+                        proxy_type: 'residential',
                         render: 'true',
-                        country_code: 'us', // Thử dùng US để lách hệ thống Canada đang bị soi
+                        country_code: 'us',
                         session_number: Math.floor(Math.random() * 100000)
                     },
                     timeout: 120000
@@ -148,7 +163,6 @@ async function runScraper() {
                 console.log(`⚠️ Lỗi ${status} tại ${kw}.`);
 
                 if (attempts < maxAttempts) {
-                    // NẾU LỖI 500, NGHỈ 20 GIÂY ĐỂ ĐỔI IP MỚI
                     console.log(`⚠️ Lần ${attempts} vẫn lỗi. Đổi IP mới và thử lại ngay...`);
                     await new Promise(r => setTimeout(r, 5000));
                 }
@@ -159,18 +173,19 @@ async function runScraper() {
 
     if (allJobs.length > 0) {
         const fileName = "Indeed_Jobs.xlsx";
-        const directLink = await uploadToPublicLink(fileName);
         const worksheet = XLSX.utils.json_to_sheet(allJobs);
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, "Jobs");
         XLSX.writeFile(workbook, fileName);
 
-        // Gửi báo cáo song song cho cả 2 kênh để tiết kiệm thời gian
+        // Chờ tạo file xong rồi mới upload link
+        const directLink = await uploadToPublicLink(fileName);
+
         await Promise.all([
-        sendTelegramAlert(`✅ Tìm thấy ${allJobs.length} jobs!`),
-        sendTelegramFile(fileName),
-        sendToTeams(allJobs.length, directLink) // Truyền link tải trực tiếp vào đây
-    ]);
+            sendTelegramAlert(`✅ Tìm thấy ${allJobs.length} jobs!`),
+            sendTelegramFile(fileName),
+            sendToTeams(allJobs.length, directLink)
+        ]);
 
         console.log("🏁 Hoàn tất! Đã gửi báo cáo đa kênh.");
     } else {
