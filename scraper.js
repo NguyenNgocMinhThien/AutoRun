@@ -42,33 +42,50 @@ async function sendToTeams(jobCount) {
     const repo = process.env.GITHUB_REPOSITORY;
     const downloadLink = `https://github.com/${repo}/actions/runs/${runId}`;
 
-    const cardData = {
-        "@type": "MessageCard",
-        "@context": "http://schema.org/extensions",
-        "themeColor": "0076D7",
-        "summary": "Cập nhật Job mới",
-        "sections": [{
-            "activityTitle": "🚀 CẬP NHẬT JOB MỚI TẠI VANCOUVER",
-            "activitySubtitle": `Tìm thấy ${jobCount} vị trí tiềm năng`,
-            "facts": [
-                { "name": "Nguồn:", "value": "Indeed Canada" },
-                { "name": "Số lượng:", "value": `<b>${jobCount} jobs</b>` }
-            ],
-            "markdown": true
-        }],
-        "potentialAction": [{
-            "@type": "OpenUri",
-            "name": "📥 Tải File Excel Tại Đây",
-            "targets": [{ "os": "default", "uri": downloadLink }]
-        }]
+    const adaptiveCard = {
+        "type": "message",
+        "attachments": [
+            {
+                "contentType": "application/vnd.microsoft.card.adaptive",
+                "content": {
+                    "type": "AdaptiveCard",
+                    "body": [
+                        {
+                            "type": "TextBlock",
+                            "size": "Medium",
+                            "weight": "Bolder",
+                            "text": "🚀 CẬP NHẬT JOB MỚI TẠI VANCOUVER"
+                        },
+                        {
+                            "type": "FactSet",
+                            "facts": [
+                                { "title": "Nguồn:", "value": "Indeed Canada" },
+                                { "title": "Số lượng:", "value": `${jobCount} jobs` },
+                                { "title": "Trạng thái:", "value": "Thành công ✅" }
+                            ]
+                        }
+                    ],
+                    "actions": [
+                        {
+                            "type": "Action.OpenUrl",
+                            "title": "📥 Tải File Excel Tại Đây",
+                            "url": downloadLink
+                        }
+                    ],
+                    "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                    "version": "1.4"
+                }
+            }
+        ]
     };
 
     try {
-        await axios.post(webhookUrl, cardData);
-        console.log("✅ Đã gửi thông báo vào Microsoft Teams!");
-    } catch (e) { console.error("❌ MS Teams Error:", e.message); }
+        await axios.post(webhookUrl, adaptiveCard);
+        console.log("✅ Đã gửi thông báo kèm nút bấm vào MS Teams!");
+    } catch (e) { 
+        console.error("❌ MS Teams Error:", e.message); 
+    }
 }
-
 // --- HÀM CHẠY CHÍNH ---
 async function runScraper() {
     console.log("🚀 Khởi động Scraper (Anti-500 + MS Teams)...");
