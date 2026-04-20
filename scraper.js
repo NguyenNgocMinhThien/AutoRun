@@ -18,6 +18,7 @@ async function sendTelegramAlert(message) {
     } catch (e) { console.error("❌ Telegram Message Error:", e.message); }
 }
 
+
 async function sendTelegramFile(filePath) {
     const botToken = process.env.TELEGRAM_TOKEN;
     const chatId = process.env.TELEGRAM_CHAT_ID;
@@ -33,58 +34,55 @@ async function sendTelegramFile(filePath) {
     } catch (e) { console.error("❌ Telegram File Error:", e.message); }
 }
 
+// --- HÀM TẢI FILE LÊN DỊCH VỤ LƯU TRỮ TẠM THỜI ---
+async function uploadToPublicLink(filePath) {
+    try {
+        const form = new FormData();
+        form.append('file', fs.createReadStream(filePath));
+        // file.io sẽ xóa file sau khi tải xong 1 lần hoặc sau 14 ngày để bảo mật
+        const response = await axios.post('https://file.io', form, {
+            headers: form.getHeaders()
+        });
+        return response.data.link; // Trả về link tải trực tiếp
+    } catch (e) {
+        console.error("❌ Lỗi upload file:", e.message);
+        return null;
+    }
+}
+
 // --- HÀM GỬI MS TEAMS ---
-async function sendToTeams(jobCount) {
+async function sendToTeams(jobCount, directDownloadLink) {
     const webhookUrl = process.env.MS_TEAMS_WEBHOOK;
     if (!webhookUrl) return;
 
-    const runId = process.env.GITHUB_RUN_ID;
-    const repo = process.env.GITHUB_REPOSITORY;
-    const downloadLink = `https://github.com/${repo}/actions/runs/${runId}`;
-
     const adaptiveCard = {
         "type": "message",
-        "attachments": [
-            {
-                "contentType": "application/vnd.microsoft.card.adaptive",
-                "content": {
-                    "type": "AdaptiveCard",
-                    "body": [
-                        {
-                            "type": "TextBlock",
-                            "size": "Medium",
-                            "weight": "Bolder",
-                            "text": "🚀 CẬP NHẬT JOB MỚI TẠI VANCOUVER"
-                        },
-                        {
-                            "type": "FactSet",
-                            "facts": [
-                                { "title": "Nguồn:", "value": "Indeed Canada" },
-                                { "title": "Số lượng:", "value": `${jobCount} jobs` },
-                                { "title": "Trạng thái:", "value": "Thành công ✅" }
-                            ]
-                        }
-                    ],
-                    "actions": [
-                        {
-                            "type": "Action.OpenUrl",
-                            "title": "📥 Tải File Excel Tại Đây",
-                            "url": downloadLink
-                        }
-                    ],
-                    "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
-                    "version": "1.4"
-                }
+        "attachments": [{
+            "contentType": "application/vnd.microsoft.card.adaptive",
+            "content": {
+                "type": "AdaptiveCard",
+                "body": [
+                    { "type": "TextBlock", "size": "Medium", "weight": "Bolder", "text": "🚀 CẬP NHẬT JOB MỚI TẠI VANCOUVER" },
+                    { "type": "FactSet", "facts": [
+                        { "title": "Nguồn:", "value": "Indeed Canada" },
+                        { "title": "Số lượng:", "value": `${jobCount} jobs` }
+                    ]}
+                ],
+                "actions": [{
+                    "type": "Action.OpenUrl",
+                    "title": "📥 TẢI FILE EXCEL VỀ MÁY",
+                    "url": directDownloadLink || "https://github.com"
+                }],
+                "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                "version": "1.4"
             }
-        ]
+        }]
     };
 
     try {
         await axios.post(webhookUrl, adaptiveCard);
-        console.log("✅ Đã gửi thông báo kèm nút bấm vào MS Teams!");
-    } catch (e) {
-        console.error("❌ MS Teams Error:", e.message);
-    }
+        console.log("✅ Đã gửi nút tải trực tiếp vào Teams!");
+    } catch (e) { console.error("❌ MS Teams Error:", e.message); }
 }
 // --- HÀM CHẠY CHÍNH ---
 async function runScraper() {
@@ -157,6 +155,7 @@ async function runScraper() {
 
     if (allJobs.length > 0) {
         const fileName = "Indeed_Jobs.xlsx";
+        const directLink = await uploadToPublicLink(fileName);
         const worksheet = XLSX.utils.json_to_sheet(allJobs);
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, "Jobs");
@@ -164,10 +163,10 @@ async function runScraper() {
 
         // Gửi báo cáo song song cho cả 2 kênh để tiết kiệm thời gian
         await Promise.all([
-            sendTelegramAlert(`✅ <b>QUÉT THÀNH CÔNG!</b>\nTìm thấy <b>${allJobs.length}</b> jobs mới.`),
-            sendTelegramFile(fileName),
-            sendToTeams(allJobs.length)
-        ]);
+        sendTelegramAlert(`✅ Tìm thấy ${allJobs.length} jobs!`),
+        sendTelegramFile(fileName),
+        sendToTeams(allJobs.length, directLink) // Truyền link tải trực tiếp vào đây
+    ]);
 
         console.log("🏁 Hoàn tất! Đã gửi báo cáo đa kênh.");
     } else {
