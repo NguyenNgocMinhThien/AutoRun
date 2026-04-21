@@ -38,65 +38,81 @@ async function sendTelegramFile(filePath) {
 // --- HÀM GỬI TEAMS QUA TRÌNH DUYỆT (FIX LỖI PERMISSION) ---
 async function sendToTeamsViaBrowser(jobCount, filePath) {
     if (!process.env.TEAMS_COOKIES) {
-        console.error("❌ Thiếu TEAMS_COOKIES trong Environment Secrets!");
+        console.error("❌ Thiếu TEAMS_COOKIES!");
         return;
     }
 
     const browser = await chromium.launch({ headless: true });
-    const context = await browser.newContext();
+    const context = await browser.newContext({
+        viewport: { width: 1280, height: 720 } // Giả lập màn hình chuẩn
+    });
     let page;
 
     try {
-        // 1. Lấy và lọc sạch Cookies
         let rawCookies = JSON.parse(process.env.TEAMS_COOKIES);
-        
         const validatedCookies = rawCookies.map(cookie => {
-            // Tạo bản sao để không làm hỏng dữ liệu gốc
             const c = { ...cookie };
-            
-            // Chuyển về định dạng Playwright hiểu được
             if (c.sameSite) {
                 const ss = c.sameSite.toLowerCase();
                 if (ss === 'lax') c.sameSite = 'Lax';
                 else if (ss === 'strict') c.sameSite = 'Strict';
                 else if (ss === 'none') c.sameSite = 'None';
-                else delete c.sameSite; // Nếu là 'no_restriction' hoặc thứ khác, xóa luôn để Playwright tự xử lý
+                else delete c.sameSite;
             }
-            
-            // Xóa các trường rác gây lỗi nếu có
-            delete c.id; 
+            delete c.id;
             return c;
         });
 
         await context.addCookies(validatedCookies);
-        
-        // 2. Mở trang Teams
         page = await context.newPage();
-        const chatId = "19:3ANSdc3795cx7bUUlxFnh51auWa7tdyWN2KXZmKQiQEMg1@thread.v2";
         
-        // Tăng timeout lên 90s vì Teams khởi động rất nặng trên GitHub Action
+        const chatId = "19:3ANSdc3795cx7bUUlxFnh51auWa7tdyWN2KXZmKQiQEMg1@thread.v2";
+        console.log("⏳ Đang tải trang Teams Chat...");
         await page.goto(`https://teams.live.com/v2/?chatId=${chatId}`, { 
             waitUntil: 'networkidle', 
             timeout: 90000 
         });
 
-        // 3. Đợi ô soạn thảo (Cố gắng đợi thêm nếu chưa thấy)
-        await page.waitForSelector('[data-tid="ckeditor-contentarea"]', { timeout: 60000 });
-        
+        // THỬ NHIỀU SELECTOR KHÁC NHAU (CHO CẢ BẢN CŨ VÀ MỚI)
+        const selectors = [
+            '[data-tid="ckeditor-contentarea"]',
+            '[role="textbox"]',
+            '.ck-content',
+            '[aria-label="Type a message"]'
+        ];
+
+        let messageBox = null;
+        for (const selector of selectors) {
+            try {
+                messageBox = await page.waitForSelector(selector, { timeout: 15000 });
+                if (messageBox) {
+                    console.log(`✅ Tìm thấy ô chat bằng selector: ${selector}`);
+                    break;
+                }
+            } catch (e) {
+                continue;
+            }
+        }
+
+        if (!messageBox) throw new Error("Không tìm thấy ô nhập liệu tin nhắn sau khi thử mọi cách.");
+
         const message = `🚀 CẬP NHẬT JOB MỚI\n- Tìm thấy: ${jobCount} jobs.\n- Ngày quét: ${new Date().toLocaleDateString()}`;
         
-        await page.fill('[data-tid="ckeditor-contentarea"]', message);
+        // Click vào trước khi gõ để đảm bảo focus
+        await messageBox.click();
+        await page.keyboard.type(message);
         await page.keyboard.press('Enter');
         
-        // Chờ 3 giây để tin nhắn kịp gửi đi
-        await page.waitForTimeout(3000);
-        console.log("✅ Đã gửi báo cáo thành công qua trình duyệt!");
+        await page.waitForTimeout(5000); // Đợi tin nhắn bay đi
+        console.log("✅ Đã gửi báo cáo thành công!");
 
     } catch (e) {
         console.error("❌ Lỗi Playwright Teams:", e.message);
         if (page) {
             await page.screenshot({ path: 'teams_error_debug.png' });
-            console.log("📸 Đã chụp ảnh màn hình lỗi (teams_error_debug.png)");
+            // Ghi lại toàn bộ HTML lúc lỗi để soi selector mới
+            const html = await page.content();
+            fs.writeFileSync('page_source.html', html);
         }
     } finally {
         await browser.close();
