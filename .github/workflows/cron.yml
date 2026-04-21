@@ -22,6 +22,7 @@ jobs:
       - name: Install dependencies
         run: npm install axios xlsx cheerio form-data
 
+
       - name: Chay Script
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
