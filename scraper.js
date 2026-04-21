@@ -56,7 +56,7 @@ async function sendToTeamsViaBrowser(jobCount, filePath) {
         await context.addCookies(cookies);
         page = await context.newPage();
         
-        const chatId = "19:3ANSdc3795cx7bUUlxFnh51auWa7tdyWN2KXZmKQiQEMg1@thread.v2";
+        const chatId = "19%3ANSdc3795cx7bU0lxFnh51auWa7tdyWN2KXzmKQlQEMg1%40thread.v2";
         console.log("⏳ Đang tải Teams...");
         await page.goto(`https://teams.live.com/v2/?chatId=${chatId}`, { waitUntil: 'networkidle', timeout: 90000 });
 
