@@ -38,36 +38,37 @@ async function sendTelegramFile(filePath) {
 // --- HÀM GỬI TEAMS QUA API ---
 async function sendToTeamsViaAPI(jobCount) {
     const skypeToken = process.env.TEAMS_TOKEN; 
-    if (!skypeToken) {
-        console.error("❌ Thiếu TEAMS_TOKEN trong GitHub Secrets!");
-        return;
-    }
+    if (!skypeToken) return;
 
     try {
+        // Tách lấy phần token thuần nếu bạn lỡ dán cả chữ "skypetoken="
+        const pureToken = skypeToken.includes('skypetoken=') ? skypeToken.split('skypetoken=')[1] : skypeToken;
+
         const endpoint = "https://teams.live.com/api/chatsvc/consumer/v1/users/ME/conversations/19:3ANSdc3795cx7bUUlxFnh51auWa7tdyWN2KXZmKQiQEMg1@thread.v2/messages";
+
         const messageBody = {
-            "content": `🚀 <b>CẬP NHẬT JOB MỚI</b><br/>- Tìm thấy: <b>${jobCount}</b> jobs.<br/>- Ngày quét: ${new Date().toLocaleDateString()}<br/>- Chi tiết: Đã gửi file Excel qua Telegram.`,
+            "content": `🚀 <b>CẬP NHẬT JOB MỚI</b><br/>- Tìm thấy: <b>${jobCount}</b> jobs.<br/>- Ngày: ${new Date().toLocaleDateString()}`,
             "messagetype": "RichText/Html",
-            "contenttype": "text"
+            "contenttype": "text",
+            "imdisplayname": "Job Bot" // Giả danh tên hiển thị
         };
 
         const response = await axios.post(endpoint, messageBody, {
             headers: {
-                'Authorization': skypeToken.startsWith('skypetoken=') ? skypeToken : `skypetoken=${skypeToken}`,
+                'Authorization': `skypetoken=${pureToken}`,
                 'Content-Type': 'application/json',
-                'X-Client-Version': '20/24020401405'
+                // Thêm các header này để giả lập trình duyệt thật 100%
+                'X-Client-Version': '20/24020401405',
+                'Authentication': `skypetoken=${pureToken}`,
+                'BehaviorOverride': 'redirectAs404'
             }
         });
 
-        if (response.status === 201 || response.status === 200) {
-            console.log("✅ [API] Đã gửi báo cáo vào Teams thành công!");
-        }
+        if (response.status === 201) console.log("✅ Gửi thành công!");
+
     } catch (e) {
-        if (e.response && e.response.status === 401) {
-            console.error("❌ Lỗi 401: SkypeToken đã hết hạn. Hãy lấy lại token mới.");
-        } else {
-            console.error("❌ Lỗi gửi Teams qua API:", e.response ? e.response.data : e.message);
-        }
+        // Nếu vẫn 401, hãy kiểm tra link Endpoint có bị sai một ký tự nào không
+        console.error("❌ Lỗi:", e.response ? JSON.stringify(e.response.data) : e.message);
     }
 }
 
