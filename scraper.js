@@ -41,34 +41,34 @@ async function sendToTeamsViaAPI(jobCount) {
     if (!skypeToken) return;
 
     try {
-        // Tách lấy phần token thuần nếu bạn lỡ dán cả chữ "skypetoken="
         const pureToken = skypeToken.includes('skypetoken=') ? skypeToken.split('skypetoken=')[1] : skypeToken;
 
-        const endpoint = "https://teams.live.com/api/chatsvc/consumer/v1/users/ME/conversations/19:3ANSdc3795cx7bUUlxFnh51auWa7tdyWN2KXZmKQiQEMg1@thread.v2/messages";
+        // ID CHUẨN trích xuất từ link của bạn
+        const chatId = "19:NSdc3795cx7bU0lxFnh51auWa7tdyWN2KXzmKQlQEMg1@thread.v2";
+        
+        // Sử dụng Endpoint cloud.microsoft đồng bộ với link bạn cung cấp
+        const endpoint = `https://teams.cloud.microsoft/api/chatsvc/v1/users/ME/conversations/${chatId}/messages`;
 
         const messageBody = {
-            "content": `🚀 <b>CẬP NHẬT JOB MỚI</b><br/>- Tìm thấy: <b>${jobCount}</b> jobs.<br/>- Ngày: ${new Date().toLocaleDateString()}`,
+            "content": `🚀 <b>CẬP NHẬT JOB MỚI</b><br/>- Tìm thấy: <b>${jobCount}</b> jobs.<br/>- Ngày quét: ${new Date().toLocaleDateString()}<br/>- Chi tiết: Xem file Excel trên Telegram.`,
             "messagetype": "RichText/Html",
-            "contenttype": "text",
-            "imdisplayname": "Job Bot" // Giả danh tên hiển thị
+            "contenttype": "text"
         };
 
         const response = await axios.post(endpoint, messageBody, {
             headers: {
                 'Authorization': `skypetoken=${pureToken}`,
-                'Content-Type': 'application/json',
-                // Thêm các header này để giả lập trình duyệt thật 100%
-                'X-Client-Version': '20/24020401405',
                 'Authentication': `skypetoken=${pureToken}`,
-                'BehaviorOverride': 'redirectAs404'
+                'Content-Type': 'application/json',
+                'X-Client-Version': '20/24020401405'
             }
         });
 
-        if (response.status === 201) console.log("✅ Gửi thành công!");
-
+        if (response.status === 201 || response.status === 200) {
+            console.log("✅ [API] Tuyệt vời! Tin nhắn đã được gửi tới Teams.");
+        }
     } catch (e) {
-        // Nếu vẫn 401, hãy kiểm tra link Endpoint có bị sai một ký tự nào không
-        console.error("❌ Lỗi:", e.response ? JSON.stringify(e.response.data) : e.message);
+        console.error("❌ Lỗi API Teams:", e.response ? JSON.stringify(e.response.data) : e.message);
     }
 }
 

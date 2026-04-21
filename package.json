@@ -2,6 +2,7 @@
   "name": "indeed-auto-scraper",
   "version": "1.0.0",
   "main": "scraper.js",
+  "type": "module",
   "dependencies": {
     "@microsoft/microsoft-graph-client": "^3.0.7",
     "axios": "^1.15.0",
