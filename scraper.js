@@ -37,10 +37,14 @@ async function sendTelegramFile(filePath) {
 
 // --- HÀM GỬI TEAMS QUA TRÌNH DUYỆT (FIX LỖI PERMISSION) ---
 async function sendToTeamsViaBrowser(jobCount, filePath) {
-    if (!process.env.TEAMS_COOKIES) return console.error("❌ Thiếu Cookies!");
+    if (!process.env.TEAMS_COOKIES) return console.error("❌ Thiếu TEAMS_COOKIES!");
 
     const browser = await chromium.launch({ headless: true });
-    const context = await browser.newContext({ userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' });
+    // Thiết lập cấu hình chuẩn để Teams không nhận diện là bot
+    const context = await browser.newContext({
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        viewport: { width: 1280, height: 800 }
+    });
     let page;
 
     try {
@@ -56,16 +60,36 @@ async function sendToTeamsViaBrowser(jobCount, filePath) {
         await context.addCookies(cookies);
         page = await context.newPage();
         
-        const chatId = "19%3ANSdc3795cx7bU0lxFnh51auWa7tdyWN2KXzmKQlQEMg1%40thread.v2";
-        console.log("⏳ Đang tải Teams...");
-        await page.goto(`https://teams.live.com/v2/?chatId=${chatId}`, { waitUntil: 'networkidle', timeout: 90000 });
+        const chatId = "19:3ANSdc3795cx7bUUlxFnh51auWa7tdyWN2KXZmKQiQEMg1@thread.v2";
+        console.log("⏳ Đang tải Teams và đợi giao diện ổn định...");
+        
+        // Truy cập và đợi mạng nghỉ (networkidle)
+        await page.goto(`https://teams.live.com/v2/?chatId=${chatId}`, { 
+            waitUntil: 'networkidle', 
+            timeout: 90000 
+        });
 
-        // --- BƯỚC MỚI: XỬ LÝ CÁC NÚT CHẶN ---
-        // 1. Nếu hiện nút "Use the web app thay vì tải ứng dụng"
-        const webAppBtn = page.locator('button:has-text("Use the web app"), .use-web-app');
-        if (await webAppBtn.isVisible()) await webAppBtn.click();
+        // --- BƯỚC 1: QUÉT VÀ DỌN DẸP POP-UP ---
+        const cleanUp = async () => {
+            const overlays = [
+                'button:has-text("Use the web app")',
+                'button:has-text("Stay on web")',
+                'button:has-text("Got it")',
+                '.use-web-app',
+                '[aria-label="Close"]'
+            ];
+            for (const selector of overlays) {
+                if (await page.locator(selector).isVisible()) {
+                    console.log(`🧹 Đang đóng overlay: ${selector}`);
+                    await page.click(selector).catch(() => {});
+                    await page.waitForTimeout(2000);
+                }
+            }
+        };
+        await cleanUp();
 
-        // 2. Chờ ô chat với nhiều phương án dự phòng hơn
+        // --- BƯỚC 2: TÌM Ô CHAT VỚI RETRY LOGIC (THỬ 3 LẦN) ---
+        let chatInput = null;
         const selectors = [
             'div[contenteditable="true"]',
             '[role="textbox"]',
@@ -73,30 +97,41 @@ async function sendToTeamsViaBrowser(jobCount, filePath) {
             '.ck-content'
         ];
 
-        let found = false;
-        for (const selector of selectors) {
-            try {
-                const el = await page.waitForSelector(selector, { timeout: 10000, state: 'visible' });
-                if (el) {
-                    console.log(`✅ Khớp selector: ${selector}`);
-                    await el.click();
-                    // Dùng type chậm (delay) để Teams không tưởng là bot
-                    await page.keyboard.type(`🚀 CẬP NHẬT: ${jobCount} jobs mới ngày ${new Date().toLocaleDateString()}`, { delay: 100 });
-                    await page.keyboard.press('Enter');
-                    found = true;
+        for (let i = 0; i < 3; i++) {
+            console.log(`🔍 Thử tìm ô chat lần ${i + 1}...`);
+            for (const selector of selectors) {
+                chatInput = await page.$(selector);
+                if (chatInput && await chatInput.isVisible()) {
+                    console.log(`✅ Đã tìm thấy ô chat bằng: ${selector}`);
                     break;
                 }
-            } catch (e) {}
+            }
+            if (chatInput) break;
+            
+            // Nếu chưa thấy, thử dọn dẹp lại pop-up và đợi thêm
+            await cleanUp();
+            await page.waitForTimeout(5000);
         }
 
-        if (!found) throw new Error("Vẫn không tìm thấy ô chat.");
+        if (!chatInput) throw new Error("Không tìm thấy ô chat sau 3 lần thử.");
 
-        await page.waitForTimeout(5000); 
-        console.log("✅ Gửi thành công!");
+        // --- BƯỚC 3: GỬI TIN NHẮN ---
+        const message = `🤖 [AUTO-REPORT]\n🚀 Tìm thấy: ${jobCount} jobs mới.\n📅 Cập nhật: ${new Date().toLocaleDateString()}\n🔗 Chi tiết xem file đính kèm trên Telegram.`;
+        
+        await chatInput.click();
+        await page.waitForTimeout(1000);
+        await page.keyboard.type(message, { delay: 50 }); // Gõ chậm để kích hoạt nút gửi
+        await page.keyboard.press('Enter');
+        
+        console.log("✅ Đã gửi báo cáo thành công!");
+        await page.waitForTimeout(5000); // Chờ tin nhắn thực sự được gửi đi
 
     } catch (e) {
-        console.error("❌ Lỗi:", e.message);
-        if (page) await page.screenshot({ path: 'debug_last_hope.png' });
+        console.error("❌ Lỗi Playwright:", e.message);
+        if (page) {
+            await page.screenshot({ path: 'teams_error_debug.png' });
+            console.log("📸 Đã chụp ảnh màn hình debug.");
+        }
     } finally {
         await browser.close();
     }
