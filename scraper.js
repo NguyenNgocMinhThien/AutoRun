@@ -43,31 +43,47 @@ async function sendToTeamsViaBrowser(jobCount, filePath) {
     }
 
     const browser = await chromium.launch({ headless: true });
+    // Tạo context trước để xử lý cookie
     const context = await browser.newContext();
-    
-    try {
-        // Nạp Cookies để vượt qua đăng nhập
-        const cookies = JSON.parse(process.env.TEAMS_COOKIES);
-        await context.addCookies(cookies);
-        
-        const page = await context.newPage();
-        
-        // Chat ID bạn đã lấy từ Network tab
-        const chatId = "19:3ANSdc3795cx7bUUlxFnh51auWa7tdyWN2KXZmKQiQEMg1@thread.v2";
-        await page.goto(`https://teams.live.com/v2/?chatId=${chatId}`);
+    let page; // Khai báo biến page ở đây để khối catch có thể dùng được
 
-        // Đợi ô soạn thảo văn bản xuất hiện
+    try {
+        // 1. Lấy và chuẩn hóa Cookies
+        let cookies = JSON.parse(process.env.TEAMS_COOKIES);
+        
+        // Fix lỗi SameSite: Chuyển các giá trị không hợp lệ về 'Lax' hoặc đúng định dạng
+        const validatedCookies = cookies.map(cookie => ({
+            ...cookie,
+            sameSite: (cookie.sameSite === 'no_restriction' || !cookie.sameSite) ? 'None' : 
+                      (cookie.sameSite.charAt(0).toUpperCase() + cookie.sameSite.slice(1).toLowerCase())
+        }));
+
+        await context.addCookies(validatedCookies);
+        
+        // 2. Tạo trang mới sau khi nạp cookie
+        page = await context.newPage();
+        
+        const chatId = "19:3ANSdc3795cx7bUUlxFnh51auWa7tdyWN2KXZmKQiQEMg1@thread.v2";
+        await page.goto(`https://teams.live.com/v2/?chatId=${chatId}`, { waitUntil: 'networkidle' });
+
+        // 3. Đợi và gửi tin nhắn
         await page.waitForSelector('[data-tid="ckeditor-contentarea"]', { timeout: 60000 });
         
-        const message = `🚀 <b>CẬP NHẬT JOB MỚI</b>\n- Tìm thấy: <b>${jobCount}</b> jobs.\n- File đã được gửi qua Telegram.\n- Ngày quét: ${new Date().toLocaleDateString()}`;
+        const message = `🚀 CẬP NHẬT JOB MỚI\n- Tìm thấy: ${jobCount} jobs.\n- Ngày quét: ${new Date().toLocaleDateString()}`;
         
         await page.fill('[data-tid="ckeditor-contentarea"]', message);
         await page.keyboard.press('Enter');
         
-        console.log("✅ Đã gửi báo cáo vào MS Teams qua trình duyệt thành công!");
+        // Đợi 2 giây để đảm bảo tin nhắn đã bay đi trước khi đóng trình duyệt
+        await page.waitForTimeout(2000);
+        console.log("✅ Đã gửi báo cáo vào MS Teams thành công!");
+
     } catch (e) {
         console.error("❌ Lỗi Playwright Teams:", e.message);
-        await page.screenshot({ path: 'teams_error.png' });
+        // Chỉ chụp ảnh màn hình nếu page đã thực sự được khởi tạo thành công
+        if (page) {
+            await page.screenshot({ path: 'teams_error.png' });
+        }
     } finally {
         await browser.close();
     }
