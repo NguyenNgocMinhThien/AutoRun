@@ -38,40 +38,38 @@ async function sendTelegramFile(filePath) {
 
 
 
-async function sendToTeamsGraph(jobCount, fileLink) {
-    const credential = new ClientSecretCredential(
-        process.env.AZURE_TENANT_ID,
-        process.env.AZURE_CLIENT_ID,
-        process.env.AZURE_CLIENT_SECRET
-    );
+const { chromium } = require('playwright');
 
-    const client = Client.initWithMiddleware({
-        authProvider: {
-            getAccessToken: async () => {
-                const token = await credential.getToken("https://graph.microsoft.com/.default");
-                return token.token;
-            }
-        }
-    });
+async function sendToTeamsViaBrowser(jobCount, googleSheetLink) {
+    const browser = await chromium.launch({ headless: true }); // Chạy ngầm không hiện cửa sổ
+    const context = await browser.newContext();
+    
+    // Nạp Cookies để không phải đăng nhập lại và vượt OTP
+    const cookies = JSON.parse(process.env.TEAMS_COOKIES);
+    await context.addCookies(cookies);
+    
+    const page = await context.newPage();
+    
+    // Truy cập thẳng vào Chat ID mà bạn đã soi được trong Network
+    const chatId = "19:3ANSdc3795cx7bUUlxFnh51auWa7tdyWN2KXZmKQiQEMg1@thread.v2";
+    await page.goto(`https://teams.live.com/v2/?chatId=${chatId}`);
 
     try {
-        // Gửi tin nhắn từ Bot riêng vào Group Chat
-        const message = {
-            body: {
-                contentType: "html",
-                content: `
-                    <b>🚀 CẬP NHẬT JOB MỚI</b><br>
-                    Tìm thấy <b>${jobCount} jobs</b> mới tại Vancouver.<br><br>
-                    <a href="${fileLink}">📥 TẢI FILE EXCEL TẠI ĐÂY</a>
-                `
-            }
-        };
-
-        // endpoint dành riêng cho Chat
-        await client.api(`/chats/${process.env.TEAMS_CHANNEL_ID}/messages`).post(message);
-        console.log("✅ Bot đã gửi tin nhắn thành công vào Group Chat!");
+        // Đợi ô soạn thảo văn bản xuất hiện (Selector này dành cho Teams v2)
+        await page.waitForSelector('[data-tid="ckeditor-contentarea"]', { timeout: 30000 });
+        
+        const message = `🚀 CẬP NHẬT JOB MỚI\n- Tìm thấy: ${jobCount} jobs.\n- Link Google Sheet: ${googleSheetLink}\n(Crawl ngày: ${new Date().toLocaleDateString()})`;
+        
+        await page.fill('[data-tid="ckeditor-contentarea"]', message);
+        await page.keyboard.press('Enter');
+        
+        console.log("✅ Đã gửi báo cáo vào Group Chat qua trình duyệt!");
     } catch (e) {
-        console.error("❌ Lỗi gửi tin:", e.message);
+        console.error("❌ Lỗi thao tác trình duyệt:", e.message);
+        // Chụp ảnh màn hình lỗi để debug nếu cần
+        await page.screenshot({ path: 'error_screenshot.png' });
+    } finally {
+        await browser.close();
     }
 }
 

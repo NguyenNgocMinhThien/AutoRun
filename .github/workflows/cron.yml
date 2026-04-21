@@ -21,6 +21,8 @@ jobs:
 
       - name: Install dependencies
         run: npm install axios xlsx cheerio form-data
+      - name: Install Playwright Browsers
+        run: npx playwright install chromium --with-deps
 
       - name: Chay Script
         env:
@@ -33,6 +35,7 @@ jobs:
           TEAMS_CHANNEL_ID: ${{ secrets.TEAMS_CHANNEL_ID }}
           AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           AZURE_USER_ID: ${{ secrets.AZURE_USER_ID }}
+          TEAMS_COOKIES: ${{ secrets.TEAMS_COOKIES }}
         run: node scraper.js
 
       - name: Upload Excel Report
