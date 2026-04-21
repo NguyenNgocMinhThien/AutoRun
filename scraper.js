@@ -1,11 +1,11 @@
-const axios = require('axios');
-const XLSX = require('xlsx');
-const cheerio = require('cheerio');
-const fs = require('fs');
-const FormData = require('form-data');
-const { chromium } = require('playwright'); // Import Playwright
-require('isomorphic-fetch');
+import axios from 'axios';
+import XLSX from 'xlsx';
+import * as cheerio from 'cheerio';
+import fs from 'fs';
+import FormData from 'form-data';
+import { createRequire } from 'module';
 
+const require = createRequire(import.meta.url);
 const KEYWORDS = ["Analyst", "CFA", "CEO", "Data Science", "FP&A"];
 
 // --- HÀM GỬI TELEGRAM ---
@@ -35,10 +35,8 @@ async function sendTelegramFile(filePath) {
     } catch (e) { console.error("❌ Telegram File Error:", e.message); }
 }
 
-// --- HÀM GỬI TEAMS QUA TRÌNH DUYỆT (FIX LỖI PERMISSION) ---
-// Thay thế hàm sendToTeams cũ bằng hàm API này
+// --- HÀM GỬI TEAMS QUA API ---
 async function sendToTeamsViaAPI(jobCount) {
-    // Lấy Token từ GitHub Secrets để bảo mật
     const skypeToken = process.env.TEAMS_TOKEN; 
     if (!skypeToken) {
         console.error("❌ Thiếu TEAMS_TOKEN trong GitHub Secrets!");
@@ -46,10 +44,7 @@ async function sendToTeamsViaAPI(jobCount) {
     }
 
     try {
-        // Endpoint bạn đã cung cấp từ API chatsvc
         const endpoint = "https://teams.live.com/api/chatsvc/consumer/v1/users/ME/conversations/19:3ANSdc3795cx7bUUlxFnh51auWa7tdyWN2KXZmKQiQEMg1@thread.v2/messages";
-
-        // Nội dung tin nhắn định dạng HTML
         const messageBody = {
             "content": `🚀 <b>CẬP NHẬT JOB MỚI</b><br/>- Tìm thấy: <b>${jobCount}</b> jobs.<br/>- Ngày quét: ${new Date().toLocaleDateString()}<br/>- Chi tiết: Đã gửi file Excel qua Telegram.`,
             "messagetype": "RichText/Html",
@@ -58,7 +53,6 @@ async function sendToTeamsViaAPI(jobCount) {
 
         const response = await axios.post(endpoint, messageBody, {
             headers: {
-                // Sử dụng chính xác skypetoken bạn vừa lấy
                 'Authorization': skypeToken.startsWith('skypetoken=') ? skypeToken : `skypetoken=${skypeToken}`,
                 'Content-Type': 'application/json',
                 'X-Client-Version': '20/24020401405'
@@ -68,7 +62,6 @@ async function sendToTeamsViaAPI(jobCount) {
         if (response.status === 201 || response.status === 200) {
             console.log("✅ [API] Đã gửi báo cáo vào Teams thành công!");
         }
-
     } catch (e) {
         if (e.response && e.response.status === 401) {
             console.error("❌ Lỗi 401: SkypeToken đã hết hạn. Hãy lấy lại token mới.");
@@ -77,9 +70,6 @@ async function sendToTeamsViaAPI(jobCount) {
         }
     }
 }
-
-
-await sendToTeamsViaAPI(allJobs.length);
 
 // --- HÀM CHẠY CHÍNH (GIỮ NGUYÊN LOGIC CỦA BẠN) ---
 async function runScraper() {
@@ -140,19 +130,19 @@ async function runScraper() {
     }
 
     if (allJobs.length > 0) {
-        const fileName = `Indeed_Jobs_${Math.floor(Math.random() * 1000)}.xlsx`;
+        const fileName = `Indeed_Jobs.xlsx`; // Bỏ random để dễ quản lý trong workflow
         const worksheet = XLSX.utils.json_to_sheet(allJobs);
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, "Jobs");
         XLSX.writeFile(workbook, fileName);
 
-        // --- ĐOẠN FIX LỖI GỌI HÀM ---
+        // Gửi báo cáo đồng thời
         await Promise.all([
             sendTelegramAlert(`✅ Tìm thấy ${allJobs.length} jobs!`),
             sendTelegramFile(fileName),
-            sendToTeamsViaBrowser(allJobs.length, fileName) // ĐỔI TÊN HÀM Ở ĐÂY ĐỂ KHỚP VỚI PLAYWRIGHT
+            sendToTeamsViaAPI(allJobs.length) // Gọi hàm API mới tại đây
         ]);
-        console.log("🏁 Hoàn tất báo cáo qua tài khoản Browser/Cookies.");
+        console.log("🏁 Hoàn tất tất cả báo cáo.");
     } else {
         await sendTelegramAlert("⚠️ Không lấy được dữ liệu job nào.");
     }
