@@ -35,41 +35,41 @@ async function sendTelegramFile(filePath) {
     } catch (e) { console.error("❌ Telegram File Error:", e.message); }
 }
 async function sendToTeamsViaAPI(jobCount) {
-    const skypeToken = process.env.TEAMS_TOKEN; 
-    if (!skypeToken) return;
+    const bearerToken = process.env.TEAMS_TOKEN; 
+    if (!bearerToken) return;
 
     try {
-        const pureToken = skypeToken.includes('skypetoken=') ? skypeToken.split('skypetoken=')[1] : skypeToken;
+        // Đảm bảo token bắt đầu bằng Bearer
+        const token = bearerToken.startsWith('Bearer ') ? bearerToken : `Bearer ${bearerToken}`;
 
-        // ID lấy từ link bạn cung cấp: 19:NSdc3795cx7bU0lxFnh51auWa7tdyWN2KXzmKQlQEMg1@thread.v2
+        // ID nhóm của bạn
         const chatId = "19:NSdc3795cx7bU0lxFnh51auWa7tdyWN2KXzmKQlQEMg1@thread.v2";
         
-        // Cấu trúc Endpoint chuẩn cho Teams Cloud mới nhất
-        const endpoint = `https://teams.cloud.microsoft/api/chatsvc/v1/users/ME/conversations/${chatId}/messages`;
+        // ENDPOINT CHUẨN cho tài khoản doanh nghiệp (UEF)
+        // Lưu ý: Sử dụng emeav2 hoặc amer (tùy khu vực), nhưng ames/emea là phổ biến nhất
+        const endpoint = `https://teams.microsoft.com/api/chatsvc/v1/users/ME/conversations/${chatId}/messages`;
 
         const messageBody = {
-            "content": `🚀 <b>CẬP NHẬT JOB MỚI</b><br/>- Tìm thấy: <b>${jobCount}</b> jobs.<br/>- Ngày quét: ${new Date().toLocaleDateString()}<br/>- File chi tiết: Đã gửi qua Telegram.`,
+            "content": `🚀 <b>CẬP NHẬT JOB MỚI</b><br/>- Tìm thấy: <b>${jobCount}</b> jobs.<br/>- Ngày: ${new Date().toLocaleDateString()}`,
             "messagetype": "RichText/Html",
             "contenttype": "text"
         };
 
         const response = await axios.post(endpoint, messageBody, {
             headers: {
-                'Authorization': `skypetoken=${pureToken}`,
-                'Authentication': `skypetoken=${pureToken}`,
+                'Authorization': token, // Dùng Bearer token thay vì SkypeToken
                 'Content-Type': 'application/json',
-                'X-Client-Version': '20/24020401405',
-                'ScenarioId': 'S_Messaging_Chat_V2' // Thêm định danh kịch bản gửi tin
+                'X-Client-Version': '20/24020401405'
             }
         });
 
-        if (response.status === 201 || response.status === 200) {
-            console.log("✅ [API] Tin nhắn đã được gửi thành công!");
+        if (response.status === 201) {
+            console.log("✅ [API] Tin nhắn đã được gửi vào Teams (UEF) thành công!");
         }
     } catch (e) {
-        // Ghi log chi tiết hơn để bắt được lỗi ""
-        const errorDetail = e.response ? (e.response.data.message || JSON.stringify(e.response.data)) : e.message;
-        console.error(`❌ Lỗi API Teams (${e.response?.status || 'Unknown'}):`, errorDetail);
+        // Log chi tiết hơn để xử lý lỗi nếu vẫn thất bại
+        const errorMsg = e.response?.data ? JSON.stringify(e.response.data) : e.message;
+        console.error(`❌ Lỗi API Teams (${e.response?.status}):`, errorMsg);
     }
 }
 
