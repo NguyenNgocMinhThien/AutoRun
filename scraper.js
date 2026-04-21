@@ -36,106 +36,50 @@ async function sendTelegramFile(filePath) {
 }
 
 // --- HÀM GỬI TEAMS QUA TRÌNH DUYỆT (FIX LỖI PERMISSION) ---
-async function sendToTeamsViaBrowser(jobCount, filePath) {
-    if (!process.env.TEAMS_COOKIES) return console.error("❌ Thiếu TEAMS_COOKIES!");
-
-    const browser = await chromium.launch({ headless: true });
-    // Thiết lập cấu hình chuẩn để Teams không nhận diện là bot
-    const context = await browser.newContext({
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        viewport: { width: 1280, height: 800 }
-    });
-    let page;
+// Thay thế hàm sendToTeams cũ bằng hàm API này
+async function sendToTeamsViaAPI(jobCount) {
+    // Lấy Token từ GitHub Secrets để bảo mật
+    const skypeToken = process.env.TEAMS_TOKEN; 
+    if (!skypeToken) {
+        console.error("❌ Thiếu TEAMS_TOKEN trong GitHub Secrets!");
+        return;
+    }
 
     try {
-        const cookies = JSON.parse(process.env.TEAMS_COOKIES).map(c => {
-            const cookie = { ...c };
-            if (cookie.sameSite) {
-                const ss = cookie.sameSite.toLowerCase();
-                cookie.sameSite = ss === 'lax' ? 'Lax' : ss === 'strict' ? 'Strict' : ss === 'none' ? 'None' : 'Lax';
-            }
-            return cookie;
-        });
+        // Endpoint bạn đã cung cấp từ API chatsvc
+        const endpoint = "https://teams.live.com/api/chatsvc/consumer/v1/users/ME/conversations/19:3ANSdc3795cx7bUUlxFnh51auWa7tdyWN2KXZmKQiQEMg1@thread.v2/messages";
 
-        await context.addCookies(cookies);
-        page = await context.newPage();
-        
-        const chatId = "19:3ANSdc3795cx7bUUlxFnh51auWa7tdyWN2KXZmKQiQEMg1@thread.v2";
-        console.log("⏳ Đang tải Teams và đợi giao diện ổn định...");
-        
-        // Truy cập và đợi mạng nghỉ (networkidle)
-        await page.goto(`https://teams.live.com/v2/?chatId=${chatId}`, { 
-            waitUntil: 'networkidle', 
-            timeout: 90000 
-        });
-
-        // --- BƯỚC 1: QUÉT VÀ DỌN DẸP POP-UP ---
-        const cleanUp = async () => {
-            const overlays = [
-                'button:has-text("Use the web app")',
-                'button:has-text("Stay on web")',
-                'button:has-text("Got it")',
-                '.use-web-app',
-                '[aria-label="Close"]'
-            ];
-            for (const selector of overlays) {
-                if (await page.locator(selector).isVisible()) {
-                    console.log(`🧹 Đang đóng overlay: ${selector}`);
-                    await page.click(selector).catch(() => {});
-                    await page.waitForTimeout(2000);
-                }
-            }
+        // Nội dung tin nhắn định dạng HTML
+        const messageBody = {
+            "content": `🚀 <b>CẬP NHẬT JOB MỚI</b><br/>- Tìm thấy: <b>${jobCount}</b> jobs.<br/>- Ngày quét: ${new Date().toLocaleDateString()}<br/>- Chi tiết: Đã gửi file Excel qua Telegram.`,
+            "messagetype": "RichText/Html",
+            "contenttype": "text"
         };
-        await cleanUp();
 
-        // --- BƯỚC 2: TÌM Ô CHAT VỚI RETRY LOGIC (THỬ 3 LẦN) ---
-        let chatInput = null;
-        const selectors = [
-            'div[contenteditable="true"]',
-            '[role="textbox"]',
-            '[aria-label="Type a message"]',
-            '.ck-content'
-        ];
-
-        for (let i = 0; i < 3; i++) {
-            console.log(`🔍 Thử tìm ô chat lần ${i + 1}...`);
-            for (const selector of selectors) {
-                chatInput = await page.$(selector);
-                if (chatInput && await chatInput.isVisible()) {
-                    console.log(`✅ Đã tìm thấy ô chat bằng: ${selector}`);
-                    break;
-                }
+        const response = await axios.post(endpoint, messageBody, {
+            headers: {
+                // Sử dụng chính xác skypetoken bạn vừa lấy
+                'Authorization': skypeToken.startsWith('skypetoken=') ? skypeToken : `skypetoken=${skypeToken}`,
+                'Content-Type': 'application/json',
+                'X-Client-Version': '20/24020401405'
             }
-            if (chatInput) break;
-            
-            // Nếu chưa thấy, thử dọn dẹp lại pop-up và đợi thêm
-            await cleanUp();
-            await page.waitForTimeout(5000);
+        });
+
+        if (response.status === 201 || response.status === 200) {
+            console.log("✅ [API] Đã gửi báo cáo vào Teams thành công!");
         }
-
-        if (!chatInput) throw new Error("Không tìm thấy ô chat sau 3 lần thử.");
-
-        // --- BƯỚC 3: GỬI TIN NHẮN ---
-        const message = `🤖 [AUTO-REPORT]\n🚀 Tìm thấy: ${jobCount} jobs mới.\n📅 Cập nhật: ${new Date().toLocaleDateString()}\n🔗 Chi tiết xem file đính kèm trên Telegram.`;
-        
-        await chatInput.click();
-        await page.waitForTimeout(1000);
-        await page.keyboard.type(message, { delay: 50 }); // Gõ chậm để kích hoạt nút gửi
-        await page.keyboard.press('Enter');
-        
-        console.log("✅ Đã gửi báo cáo thành công!");
-        await page.waitForTimeout(5000); // Chờ tin nhắn thực sự được gửi đi
 
     } catch (e) {
-        console.error("❌ Lỗi Playwright:", e.message);
-        if (page) {
-            await page.screenshot({ path: 'teams_error_debug.png' });
-            console.log("📸 Đã chụp ảnh màn hình debug.");
+        if (e.response && e.response.status === 401) {
+            console.error("❌ Lỗi 401: SkypeToken đã hết hạn. Hãy lấy lại token mới.");
+        } else {
+            console.error("❌ Lỗi gửi Teams qua API:", e.response ? e.response.data : e.message);
         }
-    } finally {
-        await browser.close();
     }
 }
+
+
+await sendToTeamsViaAPI(allJobs.length);
 
 // --- HÀM CHẠY CHÍNH (GIỮ NGUYÊN LOGIC CỦA BẠN) ---
 async function runScraper() {
