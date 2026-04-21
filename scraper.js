@@ -3,9 +3,8 @@ const XLSX = require('xlsx');
 const cheerio = require('cheerio');
 const fs = require('fs');
 const FormData = require('form-data');
-const { Client } = require('@microsoft/microsoft-graph-client');
-const { ClientSecretCredential } = require('@azure/identity');
-require('isomorphic-fetch'); // Cần thiết cho Graph Client
+const { chromium } = require('playwright'); // Import Playwright
+require('isomorphic-fetch');
 
 const KEYWORDS = ["Analyst", "CFA", "CEO", "Data Science", "FP&A"];
 
@@ -36,44 +35,45 @@ async function sendTelegramFile(filePath) {
     } catch (e) { console.error("❌ Telegram File Error:", e.message); }
 }
 
+// --- HÀM GỬI TEAMS QUA TRÌNH DUYỆT (FIX LỖI PERMISSION) ---
+async function sendToTeamsViaBrowser(jobCount, filePath) {
+    if (!process.env.TEAMS_COOKIES) {
+        console.error("❌ Thiếu TEAMS_COOKIES trong Environment Secrets!");
+        return;
+    }
 
-
-const { chromium } = require('playwright');
-
-async function sendToTeamsViaBrowser(jobCount, googleSheetLink) {
-    const browser = await chromium.launch({ headless: true }); // Chạy ngầm không hiện cửa sổ
+    const browser = await chromium.launch({ headless: true });
     const context = await browser.newContext();
     
-    // Nạp Cookies để không phải đăng nhập lại và vượt OTP
-    const cookies = JSON.parse(process.env.TEAMS_COOKIES);
-    await context.addCookies(cookies);
-    
-    const page = await context.newPage();
-    
-    // Truy cập thẳng vào Chat ID mà bạn đã soi được trong Network
-    const chatId = "19:3ANSdc3795cx7bUUlxFnh51auWa7tdyWN2KXZmKQiQEMg1@thread.v2";
-    await page.goto(`https://teams.live.com/v2/?chatId=${chatId}`);
-
     try {
-        // Đợi ô soạn thảo văn bản xuất hiện (Selector này dành cho Teams v2)
-        await page.waitForSelector('[data-tid="ckeditor-contentarea"]', { timeout: 30000 });
+        // Nạp Cookies để vượt qua đăng nhập
+        const cookies = JSON.parse(process.env.TEAMS_COOKIES);
+        await context.addCookies(cookies);
         
-        const message = `🚀 CẬP NHẬT JOB MỚI\n- Tìm thấy: ${jobCount} jobs.\n- Link Google Sheet: ${googleSheetLink}\n(Crawl ngày: ${new Date().toLocaleDateString()})`;
+        const page = await context.newPage();
+        
+        // Chat ID bạn đã lấy từ Network tab
+        const chatId = "19:3ANSdc3795cx7bUUlxFnh51auWa7tdyWN2KXZmKQiQEMg1@thread.v2";
+        await page.goto(`https://teams.live.com/v2/?chatId=${chatId}`);
+
+        // Đợi ô soạn thảo văn bản xuất hiện
+        await page.waitForSelector('[data-tid="ckeditor-contentarea"]', { timeout: 60000 });
+        
+        const message = `🚀 <b>CẬP NHẬT JOB MỚI</b>\n- Tìm thấy: <b>${jobCount}</b> jobs.\n- File đã được gửi qua Telegram.\n- Ngày quét: ${new Date().toLocaleDateString()}`;
         
         await page.fill('[data-tid="ckeditor-contentarea"]', message);
         await page.keyboard.press('Enter');
         
-        console.log("✅ Đã gửi báo cáo vào Group Chat qua trình duyệt!");
+        console.log("✅ Đã gửi báo cáo vào MS Teams qua trình duyệt thành công!");
     } catch (e) {
-        console.error("❌ Lỗi thao tác trình duyệt:", e.message);
-        // Chụp ảnh màn hình lỗi để debug nếu cần
-        await page.screenshot({ path: 'error_screenshot.png' });
+        console.error("❌ Lỗi Playwright Teams:", e.message);
+        await page.screenshot({ path: 'teams_error.png' });
     } finally {
         await browser.close();
     }
 }
 
-// --- HÀM CHẠY CHÍNH (GIỮ NGUYÊN LOGIC QUÉT CỦA BẠN) ---
+// --- HÀM CHẠY CHÍNH (GIỮ NGUYÊN LOGIC CỦA BẠN) ---
 async function runScraper() {
     console.log("🚀 Khởi động Scraper siêu bền bỉ (Quét tối thiểu 3 lần/từ khóa)...");
     let allJobs = [];
@@ -138,12 +138,13 @@ async function runScraper() {
         XLSX.utils.book_append_sheet(workbook, worksheet, "Jobs");
         XLSX.writeFile(workbook, fileName);
 
+        // --- ĐOẠN FIX LỖI GỌI HÀM ---
         await Promise.all([
             sendTelegramAlert(`✅ Tìm thấy ${allJobs.length} jobs!`),
             sendTelegramFile(fileName),
-            sendToTeamsGraph(allJobs.length, fileName) // Sử dụng hàm Graph API mới
+            sendToTeamsViaBrowser(allJobs.length, fileName) // ĐỔI TÊN HÀM Ở ĐÂY ĐỂ KHỚP VỚI PLAYWRIGHT
         ]);
-        console.log("🏁 Hoàn tất báo cáo qua tài khoản Bot riêng.");
+        console.log("🏁 Hoàn tất báo cáo qua tài khoản Browser/Cookies.");
     } else {
         await sendTelegramAlert("⚠️ Không lấy được dữ liệu job nào.");
     }
