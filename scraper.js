@@ -39,37 +39,36 @@ async function sendToTeamsViaAPI(jobCount) {
     if (!bearerToken) return;
 
     try {
-        // Đảm bảo token bắt đầu bằng Bearer
         const token = bearerToken.startsWith('Bearer ') ? bearerToken : `Bearer ${bearerToken}`;
-
-        // ID nhóm của bạn
-        const chatId = "19:NSdc3795cx7bU0lxFnh51auWa7tdyWN2KXzmKQlQEMg1@thread.v2";
         
-        // ENDPOINT CHUẨN cho tài khoản doanh nghiệp (UEF)
-        // Lưu ý: Sử dụng emeav2 hoặc amer (tùy khu vực), nhưng ames/emea là phổ biến nhất
-        const endpoint = `https://teams.microsoft.com/api/chatsvc/v1/users/ME/conversations/${chatId}/messages`;
+        // Đây là Endpoint chuẩn xác 100% trích xuất từ Network của bạn
+        // Lưu ý: Tôi đã chuyển %3A thành : và %40 thành @ để tránh lỗi lặp mã hóa
+        const chatId = "19:NSdc3795cx7bU0lxFnh51auWa7tdyWN2KXzmKQlQEMg1@thread.v2";
+        const endpoint = `https://teams.cloud.microsoft/api/chatsvc/apac/v1/users/ME/conversations/${chatId}/messages`;
 
         const messageBody = {
-            "content": `🚀 <b>CẬP NHẬT JOB MỚI</b><br/>- Tìm thấy: <b>${jobCount}</b> jobs.<br/>- Ngày: ${new Date().toLocaleDateString()}`,
+            "content": `🚀 <b>CẬP NHẬT JOB MỚI</b><br/>- Tìm thấy: <b>${jobCount}</b> jobs.<br/>- Ngày: ${new Date().toLocaleDateString()}<br/>- File: Đã gửi qua Telegram.`,
             "messagetype": "RichText/Html",
             "contenttype": "text"
         };
 
         const response = await axios.post(endpoint, messageBody, {
             headers: {
-                'Authorization': token, // Dùng Bearer token thay vì SkypeToken
+                'Authorization': token,
                 'Content-Type': 'application/json',
-                'X-Client-Version': '20/24020401405'
+                'X-Client-Version': '20/24020401405',
+                'ScenarioId': 'S_Messaging_Chat_V2'
             }
         });
 
-        if (response.status === 201) {
-            console.log("✅ [API] Tin nhắn đã được gửi vào Teams (UEF) thành công!");
+        if (response.status === 201 || response.status === 200) {
+            console.log("✅ [API] Thành công! Tin nhắn đã xuất hiện trong Teams khu vực APAC.");
         }
     } catch (e) {
-        // Log chi tiết hơn để xử lý lỗi nếu vẫn thất bại
-        const errorMsg = e.response?.data ? JSON.stringify(e.response.data) : e.message;
-        console.error(`❌ Lỗi API Teams (${e.response?.status}):`, errorMsg);
+        // Log chi tiết để xử lý nếu Token hết hạn
+        const status = e.response?.status;
+        const data = e.response?.data ? JSON.stringify(e.response.data) : e.message;
+        console.error(`❌ Lỗi API Teams (${status}):`, data);
     }
 }
 
