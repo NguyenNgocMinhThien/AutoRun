@@ -14,14 +14,14 @@ async function triggerFlowViaEmail(jobCount, filePath) {
     const transporter = nodemailer.createTransport({
         service: 'gmail',
         auth: {
-            user: 'thiennnm22@gmail.com',
+            user: 'fanjaki2017@gmail.com',
             pass: process.env.GMAIL_APP_PASS 
         }
     });
 
     try {
         await transporter.sendMail({
-            from: '"Job Scraper Bot" <thiennnm22@gmail.com>',
+            from: '"Job Scraper Bot" <fanjaki2017@gmail.com>',
             to: 'thiennnm22@uef.edu.vn',
             subject: 'SEND_TO_TEAMS_GROUP', 
             text: `Tìm thấy ${jobCount} jobs. Đang chuyển file vào Teams...`,
