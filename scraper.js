@@ -10,29 +10,28 @@ const KEYWORDS = ["Analyst", "CFA", "CEO", "Data Science", "FP&A"];
 
 // --- HÀM GỬI TELEGRAM ---
 async function triggerFlowViaEmail(jobCount, filePath) {
-    // Dùng mật khẩu ứng dụng bạn vừa tạo: bxci vggh zkde zxdo
     const transporter = nodemailer.createTransport({
         service: 'gmail',
         auth: {
-            user: 'thiennnm22@gmail.com', // Gmail của bạn
-            pass: process.env.GMAIL_APP_PASS // Đã lưu trong GitHub Secrets
+            user: 'thiennnm22@gmail.com',
+            pass: process.env.GMAIL_APP_PASS 
         }
     });
 
     try {
         await transporter.sendMail({
             from: '"Job Scraper Bot" <thiennnm22@gmail.com>',
-            to: 'thiennnm22@uef.edu.vn',       // Gửi đến email trường để Flow bắt được
-            subject: 'SEND_TO_TEAMS_GROUP',    // PHẢI khớp với Subject Filter trong Flow
-            text: `Hệ thống tìm thấy ${jobCount} jobs mới. File được đính kèm bên dưới.`,
+            to: 'thiennnm22@uef.edu.vn',
+            subject: 'SEND_TO_TEAMS_GROUP', 
+            text: `Tìm thấy ${jobCount} jobs. Đang chuyển file vào Teams...`,
             attachments: [{
                 filename: `Indeed_Jobs_Report.xlsx`,
                 path: filePath
             }]
         });
-        console.log("✅ [Email] Đã gửi email kích hoạt Flow thành công!");
+        console.log("✅ [Email] Đã gửi email kích hoạt Flow!");
     } catch (error) {
-        console.error("❌ [Email] Lỗi gửi mail kích hoạt Flow:", error.message);
+        console.error("❌ [Email] Lỗi:", error.message);
     }
 }
 
