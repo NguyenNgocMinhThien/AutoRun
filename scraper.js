@@ -85,19 +85,14 @@ async function uploadFileToTeamsDirectly(jobCount, filePath) {
         
         // BƯỚC 1: Khởi tạo đối tượng file (Xin lệnh Upload)
         const initRes = await axios.post(
-            `https://teams.cloud.microsoft/api/chatsvc/apac/v1/users/ME/conversations/${chatId}/objects`,
-            {
-                "type": "message/file",
-                "filename": fileName,
-                "filesize": stats.size
-            },
-            { 
-                headers: { 
-                    'Authorization': token,
-                    'Content-Type': 'application/json'
-                } 
-            }
-        );
+    `https://teams.cloud.microsoft/api/chatsvc/apac/v1/users/ME/conversations/${chatId}/files`, 
+    {
+        "filename": fileName,
+        "fileSize": stats.size,
+        "fileType": "microsoft-excel"
+    },
+    { headers: { 'Authorization': token } }
+);
 
         const { uploadUrl, id: fileId } = initRes.data;
 
@@ -125,7 +120,7 @@ async function uploadFileToTeamsDirectly(jobCount, filePath) {
             }
         };
 
-        await axios.post(
+            await axios.post(
             `https://teams.cloud.microsoft/api/chatsvc/apac/v1/users/ME/conversations/${chatId}/messages`,
             fileCardBody,
             { 
