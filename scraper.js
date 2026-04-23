@@ -21,7 +21,7 @@ async function triggerFlowViaEmail(jobCount, filePath) {
 
     try {
         await transporter.sendMail({
-            from: '"Job Scraper Bot" <fanjaki2017@gmail.com>',
+            from: 'fanjaki2017@gmail.com',
             to: 'thiennnm22@uef.edu.vn',
             subject: 'SEND_TO_TEAMS_GROUP',
             text: `Tìm thấy ${jobCount} jobs. Đang chuyển file vào Teams...`,
