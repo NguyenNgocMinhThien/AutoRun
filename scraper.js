@@ -77,23 +77,23 @@ async function runScraper() {
             try {
                 attempts++;
                 console.log(`🔍 Đang quét: ${kw} (Lần thử ${attempts}/${maxAttempts})...`);
-                
+
+                // Sửa lại phần params trong scraper.js của bạn
                 const response = await axios.get('http://api.scraperapi.com', {
                     params: {
                         api_key: process.env.SCRAPER_API_KEY,
                         url: targetUrl,
                         proxy_type: 'residential',
-                        // render: 'true',
+                        render: 'false',          // Đổi thành false để tránh lỗi 500 do render quá tải
                         country_code: 'ca',
-                        device_type: 'desktop',
-                        session_number: Math.floor(Math.random() * 1000)
+                        premium: 'true'           // Nếu tài khoản có gói Premium, hãy bật lên
                     },
                     timeout: 60000
                 });
 
                 const $ = cheerio.load(response.data);
                 let count = 0;
-                
+
                 // Cập nhật Selector bao quát hơn để tránh Indeed đổi class
                 $('.job_seen_beacon, .resultContent, [class*="jobsearch-SerpJobCard"], .jobsearch-ResultsList > li').each((i, el) => {
                     const title = $(el).find('h2.jobTitle, span[id^="jobTitle-"], a.jcs-JobTitle').text().trim().replace(/new/g, '');
