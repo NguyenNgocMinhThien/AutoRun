@@ -83,12 +83,12 @@ async function runScraper() {
                         api_key: process.env.SCRAPER_API_KEY,
                         url: targetUrl,
                         proxy_type: 'residential',
-                        render: 'true',
+                        // render: 'true',
                         country_code: 'ca',
                         device_type: 'desktop',
-                        session_number: Math.floor(Math.random() * 10000)
+                        session_number: Math.floor(Math.random() * 1000)
                     },
-                    timeout: 120000
+                    timeout: 60000
                 });
 
                 const $ = cheerio.load(response.data);
