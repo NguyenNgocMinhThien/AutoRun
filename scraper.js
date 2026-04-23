@@ -15,7 +15,7 @@ async function triggerFlowViaEmail(jobCount, filePath) {
         service: 'gmail',
         auth: {
             user: 'fanjaki2017@gmail.com',
-            pass: process.env.GMAIL_APP_PASS 
+            pass: process.env.GMAIL_APP_PASS
         }
     });
 
@@ -23,7 +23,7 @@ async function triggerFlowViaEmail(jobCount, filePath) {
         await transporter.sendMail({
             from: '"Job Scraper Bot" <fanjaki2017@gmail.com>',
             to: 'thiennnm22@uef.edu.vn',
-            subject: 'SEND_TO_TEAMS_GROUP', 
+            subject: 'SEND_TO_TEAMS_GROUP',
             text: `Tìm thấy ${jobCount} jobs. Đang chuyển file vào Teams...`,
             attachments: [{
                 filename: `Indeed_Jobs_Report.xlsx`,
@@ -80,10 +80,11 @@ async function runScraper() {
                     params: {
                         api_key: process.env.SCRAPER_API_KEY,
                         url: targetUrl,
-                        proxy_type: 'residential',
-                        render: 'true',
-                        country_code: 'us',
-                        session_number: Math.floor(Math.random() * 100000)
+                        proxy_type: 'residential', // Giữ nguyên loại residential
+                        render: 'true',           // Bắt buộc để vượt qua kiểm tra JavaScript
+                        country_code: 'ca',       // Chuyển sang 'ca' (Canada) vì bạn đang tìm job ở Vancouver
+                        session_number: Math.floor(Math.random() * 100000), // Tạo session mới mỗi lần quét
+                        autoparse: 'false'        // Để mình tự parse bằng Cheerio
                     },
                     timeout: 120000
                 });
