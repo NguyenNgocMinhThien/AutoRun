@@ -12,43 +12,24 @@ const KEYWORDS = ["Analyst", "CFA", "CEO", "Data Science", "FP&A"];
 
 // --- HÀM GỬI TEAMS QUA WORKFLOW URL (DÙNG LINK BẠN GỬI) ---
 async function sendToTeams(jobCounts) {
+    // Dán cái link Workflow URL bạn đã copy vào đây
     const flowUrl = "https://default623b73c907ff40a09b5f9530629ae2.dc.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/e73e4f2f5ee4408fae5d8a0f00d8a25d/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=aHvqwoqmo9julzI0hBW0mBVlKN7wA2C0Q6UtNKmPjUU";
-
+    
     const totalJobs = Object.values(jobCounts).reduce((a, b) => a + b, 0);
 
+    // Gửi dữ liệu dưới dạng JSON đơn giản để Workflow tự xử lý hoặc dùng Adaptive Card
     const messagePayload = {
-        "type": "message",
-        "attachments": [
-            {
-                "contentType": "application/vnd.microsoft.card.adaptive",
-                "content": {
-                    "type": "AdaptiveCard",
-                    "body": [
-                        { "type": "TextBlock", "text": "🚀 CẬP NHẬT JOB MỚI", "weight": "Bolder", "size": "Large", "color": "Accent" },
-                        { "type": "TextBlock", "text": `Ngày cập nhật: ${new Date().toLocaleDateString('vi-VN')}`, "isSubtle": true, "spacing": "None" },
-                        {
-                            "type": "FactSet",
-                            "facts": [
-                                { "title": "Analyst:", "value": `${jobCounts.Analyst || 0}` },
-                                { "title": "Data Science:", "value": `${jobCounts.DataScience || 0}` },
-                                { "title": "CEO:", "value": `${jobCounts.CEO || 0}` },
-                                { "title": "Tổng cộng:", "value": `**${totalJobs} jobs**` }
-                            ]
-                        },
-                        { "type": "TextBlock", "text": "📂 File báo cáo: Đã được đính kèm trong mục Artifacts trên GitHub.", "wrap": true, "color": "Attention" }
-                    ],
-                    "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
-                    "version": "1.4"
-                }
-            }
-        ]
+        "title": "🚀 CẬP NHẬT JOB MỚI",
+        "total": totalJobs,
+        "details": Object.entries(jobCounts).map(([k, v]) => `${k}: ${v} jobs`).join("\n"),
+        "date": new Date().toLocaleString('vi-VN')
     };
 
     try {
         await axios.post(flowUrl, messagePayload);
-        console.log("✅ [Teams] Đã nổ popup tin nhắn thành công!");
+        console.log("✅ [Teams] Đã gửi tín hiệu tới Workflow thành công!");
     } catch (error) {
-        console.error("❌ [Teams] Lỗi gửi tin nhắn:", error.response ? error.response.data : error.message);
+        console.error("❌ [Teams] Lỗi gửi Webhook:", error.message);
     }
 }
 
