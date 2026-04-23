@@ -71,7 +71,114 @@ async function sendToTeamsViaAPI(jobCount) {
         console.error(`❌ Lỗi API Teams (${status}):`, data);
     }
 }
+async function uploadFileToTeamsDirectly(jobCount, filePath) {
+    const bearerToken = process.env.TEAMS_TOKEN;
+    if (!bearerToken || !fs.existsSync(filePath)) return;
 
+    try {
+        const token = bearerToken.startsWith('Bearer ') ? bearerToken : `Bearer ${bearerToken}`;
+        const fileName = filePath.split('/').pop();
+        const stats = fs.statSync(filePath);
+        const chatId = "19:NSdc3795cx7bU0lxFnh51auWa7tdyWN2KXzmKQlQEMg1@thread.v2";
+
+        // BƯỚC A: Xin lệnh upload (Sử dụng đúng Endpoint APAC bạn tìm được)
+        const uploadInvite = await axios.post(
+            `https://teams.cloud.microsoft/api/chatsvc/apac/v1/users/ME/conversations/${chatId}/objects`,
+            { "type": "message/file", "filename": fileName, "filesize": stats.size },
+            { headers: { 'Authorization': token } }
+        );
+
+        const { uploadUrl, id: fileId } = uploadInvite.data;
+
+        // BƯỚC B: Đẩy dữ liệu nhị phân của file lên server
+        const fileBuffer = fs.readFileSync(filePath);
+        await axios.put(uploadUrl, fileBuffer, {
+            headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }
+        });
+
+        // BƯỚC C: Gửi tin nhắn chứa "Thẻ file" để file hiện lên khung chat
+        const fileMessage = {
+            "content": `<file id="${fileId}" name="${fileName}"></file>`,
+            "messagetype": "RichText/Html",
+            "contenttype": "text",
+            "properties": {
+                "files": JSON.stringify([{
+                    "id": fileId, "displayName": fileName, "type": "microsoft-excel", "version": "1"
+                }])
+            }
+        };
+
+        await axios.post(
+            `https://teams.cloud.microsoft/api/chatsvc/apac/v1/users/ME/conversations/${chatId}/messages`,
+            fileMessage,
+            { headers: { 'Authorization': token, 'X-Client-Version': '20/24020401405' } }
+        );
+
+        console.log("✅ [FILE] Đã gửi file Excel trực tiếp vào Teams!");
+    } catch (e) {
+        console.error("⚠️ Lỗi gửi file (Có thể do quyền OneDrive):", e.message);
+    }
+}
+
+async function uploadFileToTeamsDirectly(filePath, fileName) {
+    const bearerToken = process.env.TEAMS_TOKEN;
+    if (!bearerToken || !fs.existsSync(filePath)) return;
+
+    try {
+        const token = bearerToken.startsWith('Bearer ') ? bearerToken : `Bearer ${bearerToken}`;
+        const chatId = "19:NSdc3795cx7bU0lxFnh51auWa7tdyWN2KXzmKQlQEMg1@thread.v2";
+        const stats = fs.statSync(filePath);
+
+        // BƯỚC 1: Xin lệnh upload (Create Upload Session)
+        // Lưu ý: Endpoint này dùng để khởi tạo việc truyền tải file trong APAC
+        const inviteRes = await axios.post(
+            `https://teams.cloud.microsoft/api/chatsvc/apac/v1/users/ME/conversations/${chatId}/objects`,
+            {
+                "type": "message/file",
+                "filename": fileName,
+                "filesize": stats.size
+            },
+            { headers: { 'Authorization': token, 'Content-Type': 'application/json' } }
+        );
+
+        const uploadUrl = inviteRes.data.uploadUrl;
+        const fileId = inviteRes.data.id;
+
+        // BƯỚC 2: Đẩy dữ liệu file lên server Microsoft (PUT binary)
+        const fileBuffer = fs.readFileSync(filePath);
+        await axios.put(uploadUrl, fileBuffer, {
+            headers: {
+                'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                'Content-Length': stats.size
+            }
+        });
+
+        // BƯỚC 3: Gửi tin nhắn chứa "Thẻ file" để nó hiện lên khung chat
+        const messageBody = {
+            "content": `<file id="${fileId}" name="${fileName}"></file>`,
+            "messagetype": "RichText/Html",
+            "contenttype": "text",
+            "properties": {
+                "files": JSON.stringify([{
+                    "id": fileId,
+                    "displayName": fileName,
+                    "type": "microsoft-excel",
+                    "version": "1"
+                }])
+            }
+        };
+
+        await axios.post(
+            `https://teams.cloud.microsoft/api/chatsvc/apac/v1/users/ME/conversations/${chatId}/messages`,
+            messageBody,
+            { headers: { 'Authorization': token, 'Content-Type': 'application/json' } }
+        );
+
+        console.log("✅ Đã gửi file Excel TRỰC TIẾP vào Teams!");
+    } catch (e) {
+        console.error("❌ Lỗi upload file trực tiếp:", e.response ? JSON.stringify(e.response.data) : e.message);
+    }
+}
 // --- HÀM CHẠY CHÍNH (GIỮ NGUYÊN LOGIC CỦA BẠN) ---
 async function runScraper() {
     console.log("🚀 Khởi động Scraper siêu bền bỉ (Quét tối thiểu 3 lần/từ khóa)...");
@@ -138,10 +245,12 @@ async function runScraper() {
         XLSX.writeFile(workbook, fileName);
 
         // Gửi báo cáo đồng thời
+        // --- GIỮ NGUYÊN LOGIC CŨ VÀ GỌI THÊM HÀM FILE ---
         await Promise.all([
             sendTelegramAlert(`✅ Tìm thấy ${allJobs.length} jobs!`),
             sendTelegramFile(fileName),
-            sendToTeamsViaAPI(allJobs.length) // Gọi hàm API mới tại đây
+            sendToTeamsViaAPI(allJobs.length), // Hàm cũ của bạn (Giữ nguyên)
+            uploadFileToTeamsDirectly(allJobs.length, fileName) // Hàm mới (Thử nghiệm gửi file)
         ]);
         console.log("🏁 Hoàn tất tất cả báo cáo.");
     } else {
