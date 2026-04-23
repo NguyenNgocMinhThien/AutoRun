@@ -9,6 +9,34 @@ const require = createRequire(import.meta.url);
 const KEYWORDS = ["Analyst", "CFA", "CEO", "Data Science", "FP&A"];
 
 // --- HÀM GỬI TELEGRAM ---
+async function triggerFlowViaEmail(jobCount, filePath) {
+    // Dùng mật khẩu ứng dụng bạn vừa tạo: bxci vggh zkde zxdo
+    const transporter = nodemailer.createTransport({
+        service: 'gmail',
+        auth: {
+            user: 'thiennnm22@gmail.com', // Gmail của bạn
+            pass: process.env.GMAIL_APP_PASS // Đã lưu trong GitHub Secrets
+        }
+    });
+
+    try {
+        await transporter.sendMail({
+            from: '"Job Scraper Bot" <thiennnm22@gmail.com>',
+            to: 'thiennnm22@uef.edu.vn',       // Gửi đến email trường để Flow bắt được
+            subject: 'SEND_TO_TEAMS_GROUP',    // PHẢI khớp với Subject Filter trong Flow
+            text: `Hệ thống tìm thấy ${jobCount} jobs mới. File được đính kèm bên dưới.`,
+            attachments: [{
+                filename: `Indeed_Jobs_Report.xlsx`,
+                path: filePath
+            }]
+        });
+        console.log("✅ [Email] Đã gửi email kích hoạt Flow thành công!");
+    } catch (error) {
+        console.error("❌ [Email] Lỗi gửi mail kích hoạt Flow:", error.message);
+    }
+}
+
+// --- 2. HÀM GỬI TELEGRAM (GIỮ LẠI ĐỂ DỰ PHÒNG) ---
 async function sendTelegramAlert(message) {
     const botToken = process.env.TELEGRAM_TOKEN;
     const chatId = process.env.TELEGRAM_CHAT_ID;
@@ -31,112 +59,7 @@ async function sendTelegramFile(filePath) {
         await axios.post(`https://api.telegram.org/bot${botToken}/sendDocument`, form, {
             headers: form.getHeaders()
         });
-        console.log("✅ Đã gửi file Excel qua Telegram!");
     } catch (e) { console.error("❌ Telegram File Error:", e.message); }
-}
-async function sendToTeamsViaAPI(jobCount) {
-    const bearerToken = process.env.TEAMS_TOKEN; 
-    if (!bearerToken) return;
-
-    try {
-        const token = bearerToken.startsWith('Bearer ') ? bearerToken : `Bearer ${bearerToken}`;
-        
-        // Đây là Endpoint chuẩn xác 100% trích xuất từ Network của bạn
-        // Lưu ý: Tôi đã chuyển %3A thành : và %40 thành @ để tránh lỗi lặp mã hóa
-        const chatId = "19:NSdc3795cx7bU0lxFnh51auWa7tdyWN2KXzmKQlQEMg1@thread.v2";
-        const endpoint = `https://teams.cloud.microsoft/api/chatsvc/apac/v1/users/ME/conversations/${chatId}/messages`;
-
-        const messageBody = {
-            "content": `🚀 <b>CẬP NHẬT JOB MỚI</b><br/>- Tìm thấy: <b>${jobCount}</b> jobs.<br/>- Ngày: ${new Date().toLocaleDateString()}<br/>- File: Đã gửi qua Telegram.`,
-            "messagetype": "RichText/Html",
-            "contenttype": "text"
-        };
-
-        const response = await axios.post(endpoint, messageBody, {
-            headers: {
-                'Authorization': token,
-                'Content-Type': 'application/json',
-                'X-Client-Version': '20/24020401405',
-                'ScenarioId': 'S_Messaging_Chat_V2'
-            }
-        });
-
-        if (response.status === 201 || response.status === 200) {
-            console.log("✅ [API] Thành công! Tin nhắn đã xuất hiện trong Teams khu vực APAC.");
-        }
-    } catch (e) {
-        // Log chi tiết để xử lý nếu Token hết hạn
-        const status = e.response?.status;
-        const data = e.response?.data ? JSON.stringify(e.response.data) : e.message;
-        console.error(`❌ Lỗi API Teams (${status}):`, data);
-    }
-}
-async function uploadFileToTeamsDirectly(jobCount, filePath) {
-    const bearerToken = process.env.TEAMS_TOKEN;
-    if (!bearerToken || !fs.existsSync(filePath)) return;
-
-    try {
-        const token = bearerToken.startsWith('Bearer ') ? bearerToken : `Bearer ${bearerToken}`;
-        const fileName = filePath.split('/').pop();
-        const stats = fs.statSync(filePath);
-        
-        // Chat ID chuẩn từ link bạn gửi
-        const chatId = "19:NSdc3795cx7bU0lxFnh51auWa7tdyWN2KXzmKQlQEMg1@thread.v2";
-        
-        // BƯỚC 1: Khởi tạo đối tượng file (Xin lệnh Upload)
-        const initRes = await axios.post(
-    `https://teams.cloud.microsoft/api/chatsvc/apac/v1/users/ME/conversations/${chatId}/files`, 
-    {
-        "filename": fileName,
-        "fileSize": stats.size,
-        "fileType": "microsoft-excel"
-    },
-    { headers: { 'Authorization': token } }
-);
-
-        const { uploadUrl, id: fileId } = initRes.data;
-
-        // BƯỚC 2: Upload dữ liệu nhị phân lên server Microsoft
-        const fileBuffer = fs.readFileSync(filePath);
-        await axios.put(uploadUrl, fileBuffer, {
-            headers: { 
-                'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                'Content-Length': stats.size
-            }
-        });
-
-        // BƯỚC 3: Gửi tin nhắn chứa "Thẻ file" để hiển thị icon Excel trong khung chat
-        const fileCardBody = {
-            "content": `<file id="${fileId}" name="${fileName}"></file>`,
-            "messagetype": "RichText/Html",
-            "contenttype": "text",
-            "properties": {
-                "files": JSON.stringify([{
-                    "id": fileId,
-                    "displayName": fileName,
-                    "type": "microsoft-excel",
-                    "version": "1"
-                }])
-            }
-        };
-
-            await axios.post(
-            `https://teams.cloud.microsoft/api/chatsvc/apac/v1/users/ME/conversations/${chatId}/messages`,
-            fileCardBody,
-            { 
-                headers: { 
-                    'Authorization': token,
-                    'X-Client-Version': '20/24020401405'
-                } 
-            }
-        );
-
-        console.log("✅ [SUCCESS] File Excel đã được đẩy thẳng vào Teams!");
-
-    } catch (e) {
-        const errorDetail = e.response ? JSON.stringify(e.response.data) : e.message;
-        console.error(`❌ Lỗi gửi file trực tiếp:`, errorDetail);
-    }
 }
 // --- HÀM CHẠY CHÍNH (GIỮ NGUYÊN LOGIC CỦA BẠN) ---
 async function runScraper() {
@@ -206,10 +129,10 @@ async function runScraper() {
         // Gửi báo cáo đồng thời
         // --- GIỮ NGUYÊN LOGIC CŨ VÀ GỌI THÊM HÀM FILE ---
         await Promise.all([
-            sendTelegramAlert(`✅ Tìm thấy ${allJobs.length} jobs!`),
+            sendTelegramAlert(`✅ Đã quét xong! Tìm thấy ${allJobs.length} jobs.`),
             sendTelegramFile(fileName),
-            sendToTeamsViaAPI(allJobs.length), // Hàm cũ của bạn (Giữ nguyên)
-            uploadFileToTeamsDirectly(allJobs.length, fileName) // Hàm mới (Thử nghiệm gửi file)
+            // Gửi qua Email để Power Automate tự bốc file bỏ vào Group Chat Teams
+            triggerFlowViaEmail(allJobs.length, fileName)
         ]);
         console.log("🏁 Hoàn tất tất cả báo cáo.");
     } else {
