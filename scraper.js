@@ -79,14 +79,14 @@ async function runScraper() {
                 console.log(`🔍 Đang quét: ${kw} (Lần thử ${attempts}/${maxAttempts})...`);
 
                 // Sửa lại phần params trong scraper.js của bạn
+                // Tìm đoạn này trong file scraper.js của bạn và cập nhật
                 const response = await axios.get('http://api.scraperapi.com', {
                     params: {
-                        api_key: process.env.SCRAPER_API_KEY,
+                        api_key: process.env.SCRAPER_API_KEY, // Nó sẽ tự lấy key mới từ GitHub Secrets
                         url: targetUrl,
                         proxy_type: 'residential',
-                        render: 'false',          // Đổi thành false để tránh lỗi 500 do render quá tải
-                        country_code: 'ca',
-                        premium: 'true'           // Nếu tài khoản có gói Premium, hãy bật lên
+                        render: 'false', // Thử để false trước, nếu vẫn không ra job mới bật lên true
+                        country_code: 'ca'
                     },
                     timeout: 60000
                 });
