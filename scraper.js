@@ -13,7 +13,7 @@ const KEYWORDS = ["Analyst", "CFA", "CEO", "Data Science", "FP&A"];
 // --- HÀM GỬI TEAMS QUA WORKFLOW URL (DÙNG LINK BẠN GỬI) ---
 async function sendToTeams(jobCounts) {
     const flowUrl = "https://default623b73c907ff40a09b5f9530629ae2.dc.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/e73e4f2f5ee4408fae5d8a0f00d8a25d/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=aHvqwoqmo9julzI0hBW0mBVlKN7wA2C0Q6UtNKmPjUU";
-    
+
     const totalJobs = Object.values(jobCounts).reduce((a, b) => a + b, 0);
 
     const messagePayload = {
@@ -99,10 +99,12 @@ async function runScraper() {
                     params: {
                         api_key: process.env.SCRAPER_API_KEY,
                         url: targetUrl,
-                        proxy_type: 'residential',
+                        // Bỏ proxy_type: 'residential' nếu bạn dùng gói miễn phí (gói Free thường bị lỗi 500 khi bật cái này)
+                        // proxy_type: 'residential', 
+                        render: 'false',
                         country_code: 'ca'
                     },
-                    timeout: 60000
+                    timeout: 60000 // Tăng timeout lên 60s để chờ server phản hồi
                 });
 
                 const $ = cheerio.load(response.data);
@@ -135,11 +137,11 @@ async function runScraper() {
         XLSX.utils.book_append_sheet(workbook, worksheet, "Jobs");
         XLSX.writeFile(workbook, fileName);
 
-        console.log("📤 Đang gửi dữ liệu báo cáo...");
+        console.log("📤 Đang gửi dữ liệu báo cáo qua Webhook Teams...");
         await Promise.all([
             sendTelegramAlert(`✅ Đã quét xong! Tìm thấy ${allJobs.length} jobs.`),
             sendTelegramFile(fileName),
-            sendToTeams(jobCounts) // Gọi hàm Teams dùng URL cứu cánh
+            sendToTeams(jobCounts) // PHẢI LÀ HÀM NÀY ĐỂ NỔ POPUP TEAMS
         ]);
         console.log("🏁 Hoàn tất tất cả báo cáo.");
     }
