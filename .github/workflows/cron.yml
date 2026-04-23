@@ -29,6 +29,7 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           SCRAPER_API_KEY: ${{ secrets.SCRAPER_API_KEY }}
           TEAMS_TOKEN: ${{ secrets.TEAMS_TOKEN }}
+          GMAIL_APP_PASS: ${{ secrets.GMAIL_APP_PASS }}
         run: node scraper.js
 
       - name: Upload Excel Report
