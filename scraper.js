@@ -9,7 +9,7 @@ const require = createRequire(import.meta.url);
 const nodemailer = require('nodemailer');
 const KEYWORDS = ["Analyst", "CFA", "CEO", "Data Science", "FP&A"];
 
-// --- HÀM GỬI TELEGRAM ---
+// --- HÀM GỬI EMAIL KÍCH HOẠT FLOW ---
 async function triggerFlowViaEmail(jobCount, filePath) {
     const transporter = nodemailer.createTransport({
         service: 'gmail',
@@ -36,7 +36,7 @@ async function triggerFlowViaEmail(jobCount, filePath) {
     }
 }
 
-// --- 2. HÀM GỬI TELEGRAM (GIỮ LẠI ĐỂ DỰ PHÒNG) ---
+// --- HÀM GỬI TELEGRAM DỰ PHÒNG ---
 async function sendTelegramAlert(message) {
     const botToken = process.env.TELEGRAM_TOKEN;
     const chatId = process.env.TELEGRAM_CHAT_ID;
@@ -61,9 +61,10 @@ async function sendTelegramFile(filePath) {
         });
     } catch (e) { console.error("❌ Telegram File Error:", e.message); }
 }
-// --- HÀM CHẠY CHÍNH (GIỮ NGUYÊN LOGIC CỦA BẠN) ---
+
+// --- HÀM CHẠY CHÍNH ---
 async function runScraper() {
-    console.log("🚀 Khởi động Scraper siêu bền bỉ (Quét tối thiểu 3 lần/từ khóa)...");
+    console.log("🚀 Khởi động Scraper siêu bền bỉ...");
     let allJobs = [];
 
     for (const kw of KEYWORDS) {
@@ -73,33 +74,30 @@ async function runScraper() {
         const maxAttempts = 5;
 
         while (attempts < maxAttempts && !success) {
-            attempts++;
-            console.log(`🔍 Đang quét: ${kw} (Lần thử ${attempts}/${maxAttempts})...`);
             try {
-                // Sửa lại phần params trong axios.get của bạn
+                attempts++;
+                console.log(`🔍 Đang quét: ${kw} (Lần thử ${attempts}/${maxAttempts})...`);
+                
                 const response = await axios.get('http://api.scraperapi.com', {
                     params: {
                         api_key: process.env.SCRAPER_API_KEY,
                         url: targetUrl,
-                        proxy_type: 'residential', // Bắt buộc dùng residential để tránh IP datacenter bị chặn
+                        proxy_type: 'residential',
                         render: 'true',
-                        country_code: 'ca',       // Chuyển sang 'ca' vì bạn đang quét Indeed Canada
-                        premium: 'true',          // Sử dụng proxy cao cấp nếu tài khoản của bạn hỗ trợ
-                        session_number: Math.floor(Math.random() * 10000) // Mỗi từ khóa dùng 1 session riêng
+                        country_code: 'ca',
+                        device_type: 'desktop',
+                        session_number: Math.floor(Math.random() * 10000)
                     },
                     timeout: 120000
                 });
 
                 const $ = cheerio.load(response.data);
                 let count = 0;
+                
+                // Cập nhật Selector bao quát hơn để tránh Indeed đổi class
                 $('.job_seen_beacon, .resultContent, [class*="jobsearch-SerpJobCard"], .jobsearch-ResultsList > li').each((i, el) => {
-                    // Thử lấy tiêu đề bằng nhiều cách khác nhau
                     const title = $(el).find('h2.jobTitle, span[id^="jobTitle-"], a.jcs-JobTitle').text().trim().replace(/new/g, '');
-
-                    // Thử lấy lương bằng nhiều selector dự phòng
-                    const salary = $(el).find('.salary-snippet-container, .estimated-salary-container, [class*="metadata salary-metadata"]').text().trim() || "N/A";
-
-                    // Lấy link
+                    const salary = $(el).find('.salary-snippet-container, .estimated-salary-container, [class*="metadata"]').text().trim() || "N/A";
                     const linkSuffix = $(el).find('a[data-jk], h2.jobTitle a, a.jcs-JobTitle').attr('href');
 
                     if (title) {
@@ -116,29 +114,26 @@ async function runScraper() {
                     console.log(`✅ Thành công: Lấy được ${count} jobs cho ${kw}`);
                     success = true;
                 } else {
-                    console.log(`⚠️ Trang trống tại ${kw}, đang ép thử lại...`);
-                    throw new Error("Empty Page");
+                    console.log(`⚠️ Trang trống tại ${kw}, đang thử lại...`);
                 }
             } catch (err) {
-                console.log(`⚠️ Lần ${attempts} lỗi. Thử lại...`);
+                console.log(`⚠️ Lần ${attempts} lỗi: ${err.message}. Thử lại sau 5s...`);
                 if (attempts < maxAttempts) await new Promise(r => setTimeout(r, 5000));
             }
         }
     }
 
+    // Xử lý báo cáo sau khi thoát vòng lặp từ khóa
     if (allJobs.length > 0) {
-        const fileName = `Indeed_Jobs.xlsx`; // Bỏ random để dễ quản lý trong workflow
+        const fileName = `Indeed_Jobs.xlsx`;
         const worksheet = XLSX.utils.json_to_sheet(allJobs);
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, "Jobs");
         XLSX.writeFile(workbook, fileName);
 
-        // Gửi báo cáo đồng thời
-        // --- GIỮ NGUYÊN LOGIC CŨ VÀ GỌI THÊM HÀM FILE ---
         await Promise.all([
             sendTelegramAlert(`✅ Đã quét xong! Tìm thấy ${allJobs.length} jobs.`),
             sendTelegramFile(fileName),
-            // Gửi qua Email để Power Automate tự bốc file bỏ vào Group Chat Teams
             triggerFlowViaEmail(allJobs.length, fileName)
         ]);
         console.log("🏁 Hoàn tất tất cả báo cáo.");
