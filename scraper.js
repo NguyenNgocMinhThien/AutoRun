@@ -76,27 +76,33 @@ async function runScraper() {
             attempts++;
             console.log(`🔍 Đang quét: ${kw} (Lần thử ${attempts}/${maxAttempts})...`);
             try {
+                // Sửa lại phần params trong axios.get của bạn
                 const response = await axios.get('http://api.scraperapi.com', {
                     params: {
                         api_key: process.env.SCRAPER_API_KEY,
                         url: targetUrl,
-                        proxy_type: 'residential', // Giữ nguyên loại residential
-                        render: 'true',           // Bắt buộc để vượt qua kiểm tra JavaScript
-                        country_code: 'ca',       // Chuyển sang 'ca' (Canada) vì bạn đang tìm job ở Vancouver
-                        session_number: Math.floor(Math.random() * 100000), // Tạo session mới mỗi lần quét
-                        autoparse: 'false'        // Để mình tự parse bằng Cheerio
+                        proxy_type: 'residential', // Bắt buộc dùng residential để tránh IP datacenter bị chặn
+                        render: 'true',
+                        country_code: 'ca',       // Chuyển sang 'ca' vì bạn đang quét Indeed Canada
+                        premium: 'true',          // Sử dụng proxy cao cấp nếu tài khoản của bạn hỗ trợ
+                        session_number: Math.floor(Math.random() * 10000) // Mỗi từ khóa dùng 1 session riêng
                     },
                     timeout: 120000
                 });
 
                 const $ = cheerio.load(response.data);
                 let count = 0;
-                $('.job_seen_beacon, .resultContent, [class*="jobCard"]').each((i, el) => {
-                    const title = $(el).find('h2.jobTitle, a[id^="job_"]').text().trim().replace(/new/g, '');
-                    const salary = $(el).find('.salary-snippet-container, .estimated-salary-container, [class*="salary"]').text().trim() || "N/A";
-                    const linkSuffix = $(el).find('a[data-jk], h2.jobTitle a').attr('href');
+                $('.job_seen_beacon, .resultContent, [class*="jobsearch-SerpJobCard"], .jobsearch-ResultsList > li').each((i, el) => {
+                    // Thử lấy tiêu đề bằng nhiều cách khác nhau
+                    const title = $(el).find('h2.jobTitle, span[id^="jobTitle-"], a.jcs-JobTitle').text().trim().replace(/new/g, '');
 
-                    if (title && title !== "N/A") {
+                    // Thử lấy lương bằng nhiều selector dự phòng
+                    const salary = $(el).find('.salary-snippet-container, .estimated-salary-container, [class*="metadata salary-metadata"]').text().trim() || "N/A";
+
+                    // Lấy link
+                    const linkSuffix = $(el).find('a[data-jk], h2.jobTitle a, a.jcs-JobTitle').attr('href');
+
+                    if (title) {
                         allJobs.push({
                             Title: title,
                             Salary: salary,
