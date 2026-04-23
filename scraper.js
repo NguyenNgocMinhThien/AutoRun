@@ -6,6 +6,7 @@ import FormData from 'form-data';
 import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
+const nodemailer = require('nodemailer');
 const KEYWORDS = ["Analyst", "CFA", "CEO", "Data Science", "FP&A"];
 
 // --- HÀM GỬI TELEGRAM ---
