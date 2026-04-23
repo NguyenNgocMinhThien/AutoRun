@@ -79,44 +79,68 @@ async function uploadFileToTeamsDirectly(jobCount, filePath) {
         const token = bearerToken.startsWith('Bearer ') ? bearerToken : `Bearer ${bearerToken}`;
         const fileName = filePath.split('/').pop();
         const stats = fs.statSync(filePath);
+        
+        // Chat ID chuẩn từ link bạn gửi
         const chatId = "19:NSdc3795cx7bU0lxFnh51auWa7tdyWN2KXzmKQlQEMg1@thread.v2";
-
-        // BƯỚC A: Xin lệnh upload (Sử dụng đúng Endpoint APAC bạn tìm được)
-        const uploadInvite = await axios.post(
+        
+        // BƯỚC 1: Khởi tạo đối tượng file (Xin lệnh Upload)
+        const initRes = await axios.post(
             `https://teams.cloud.microsoft/api/chatsvc/apac/v1/users/ME/conversations/${chatId}/objects`,
-            { "type": "message/file", "filename": fileName, "filesize": stats.size },
-            { headers: { 'Authorization': token } }
+            {
+                "type": "message/file",
+                "filename": fileName,
+                "filesize": stats.size
+            },
+            { 
+                headers: { 
+                    'Authorization': token,
+                    'Content-Type': 'application/json'
+                } 
+            }
         );
 
-        const { uploadUrl, id: fileId } = uploadInvite.data;
+        const { uploadUrl, id: fileId } = initRes.data;
 
-        // BƯỚC B: Đẩy dữ liệu nhị phân của file lên server
+        // BƯỚC 2: Upload dữ liệu nhị phân lên server Microsoft
         const fileBuffer = fs.readFileSync(filePath);
         await axios.put(uploadUrl, fileBuffer, {
-            headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }
+            headers: { 
+                'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                'Content-Length': stats.size
+            }
         });
 
-        // BƯỚC C: Gửi tin nhắn chứa "Thẻ file" để file hiện lên khung chat
-        const fileMessage = {
+        // BƯỚC 3: Gửi tin nhắn chứa "Thẻ file" để hiển thị icon Excel trong khung chat
+        const fileCardBody = {
             "content": `<file id="${fileId}" name="${fileName}"></file>`,
             "messagetype": "RichText/Html",
             "contenttype": "text",
             "properties": {
                 "files": JSON.stringify([{
-                    "id": fileId, "displayName": fileName, "type": "microsoft-excel", "version": "1"
+                    "id": fileId,
+                    "displayName": fileName,
+                    "type": "microsoft-excel",
+                    "version": "1"
                 }])
             }
         };
 
         await axios.post(
             `https://teams.cloud.microsoft/api/chatsvc/apac/v1/users/ME/conversations/${chatId}/messages`,
-            fileMessage,
-            { headers: { 'Authorization': token, 'X-Client-Version': '20/24020401405' } }
+            fileCardBody,
+            { 
+                headers: { 
+                    'Authorization': token,
+                    'X-Client-Version': '20/24020401405'
+                } 
+            }
         );
 
-        console.log("✅ [FILE] Đã gửi file Excel trực tiếp vào Teams!");
+        console.log("✅ [SUCCESS] File Excel đã được đẩy thẳng vào Teams!");
+
     } catch (e) {
-        console.error("⚠️ Lỗi gửi file (Có thể do quyền OneDrive):", e.message);
+        const errorDetail = e.response ? JSON.stringify(e.response.data) : e.message;
+        console.error(`❌ Lỗi gửi file trực tiếp:`, errorDetail);
     }
 }
 // --- HÀM CHẠY CHÍNH (GIỮ NGUYÊN LOGIC CỦA BẠN) ---
