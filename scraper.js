@@ -22,11 +22,11 @@ async function uploadToDriveAndGetLink(fileName) {
         // ID thư mục "job scraper" của Thiện
         const folderId = '1EUAo7fNuhagyh3J41DM-shaMP0MaU-F2';
 
-        const fileMetadata = { 
+        const fileMetadata = {
             'name': fileName,
             'parents': [folderId] // BẮT BUỘC có dòng này để tránh lỗi Quota
         };
-        
+
         const media = {
             mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             body: fs.createReadStream(fileName),
@@ -142,18 +142,26 @@ async function runScraper() {
                 const $ = cheerio.load(response.data);
                 let count = 0;
                 $('.job_seen_beacon, .resultContent, [class*="jobsearch-SerpJobCard"]').each((i, el) => {
-                    const title = $(el).find('h2.jobTitle, a.jcs-JobTitle').text().trim();
+                    const titleEl = $(el).find('h2.jobTitle, a.jcs-JobTitle');
+                    const title = titleEl.text().trim();
+
+                    // Lấy link gốc: Indeed dùng link tương đối, mình phải thêm domain vào
+                    const relativeLink = titleEl.find('a').attr('href') || titleEl.attr('href');
+                    const fullLink = relativeLink ? `https://ca.indeed.com${relativeLink}` : 'N/A';
+
+                    // Lấy tên công ty
+                    const company = $(el).find('[data-testid="company-name"], .companyName').text().trim();
+
                     if (title) {
-                        allJobs.push({ Title: title, Keyword: kw });
+                        allJobs.push({
+                            Title: title,
+                            Company: company || "N/A",
+                            Link: fullLink,
+                            Keyword: kw
+                        });
                         count++;
                     }
                 });
-
-                if (count > 0) {
-                    console.log(`✅ Thành công: Lấy được ${count} jobs cho ${kw}`);
-                    jobCounts[kw] = count;
-                    success = true;
-                }
             } catch (err) {
                 console.log(`⚠️ Lần ${attempts} lỗi: ${err.message}`);
                 if (attempts < maxAttempts) await new Promise(r => setTimeout(r, 5000));
@@ -169,10 +177,10 @@ async function runScraper() {
         XLSX.writeFile(workbook, fileName);
 
         console.log("📤 Đang xử lý upload và gửi báo cáo...");
-        
+
         // BƯỚC QUAN TRỌNG: Upload Drive trước để lấy link
         const driveLink = await uploadToDriveAndGetLink(fileName);
-        
+
         // Gửi tất cả báo cáo
         await Promise.all([
             sendTelegramAlert(`✅ Đã quét xong! Tìm thấy ${allJobs.length} jobs.`),
