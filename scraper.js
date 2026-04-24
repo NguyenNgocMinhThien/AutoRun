@@ -12,25 +12,25 @@ const KEYWORDS = ["Analyst", "CFA", "CEO", "Data Science", "FP&A"];
 // --- HÀM UPLOAD GOOGLE DRIVE ---
 async function uploadToCatbox(filePath) {
     try {
-        console.log("📤 Đang tải file lên Catbox...");
+        console.log("📤 Đang tải file lên Litterbox (Catbox)...");
         const form = new FormData();
         form.append('reqtype', 'fileupload');
-        form.append('time', '72h'); // Lưu file trong 72 giờ
+        form.append('time', '24h'); // Lưu file trong 24 giờ
         form.append('fileToUpload', fs.createReadStream(filePath));
 
-        const response = await axios.post('https://litter.catbox.moe/resources/internals/api.php', form, {
+        // Endpoint chuẩn của Litterbox
+        const response = await axios.post('https://litterbox.catbox.moe/resources/internals/api.php', form, {
             headers: form.getHeaders()
         });
 
-        if (response.data && response.data.startsWith('https://')) {
-            console.log("✅ Thành công! Link Catbox:", response.data);
+        if (response.data && response.data.includes('https://litterbox.catbox.moe')) {
+            console.log("✅ Thành công! Link:", response.data);
             return response.data;
         }
-        throw new Error("Phản hồi từ Catbox không hợp lệ");
+        throw new Error("Phản hồi không hợp lệ: " + response.data);
     } catch (error) {
         console.error("❌ Lỗi Catbox:", error.message);
-        // Nếu Catbox lỗi, trả về một link thông báo lỗi để card Teams không bị trống
-        return "https://github.com/NguyenNgocMinhThien/AutoRun/actions";
+        return "https://github.com/NguyenNgocMinhThien/AutoRun/actions"; 
     }
 }
 
@@ -121,27 +121,27 @@ async function runScraper() {
 
                 const $ = cheerio.load(response.data);
                 let count = 0;
-                $('.job_seen_beacon, .resultContent').each((i, el) => {
-                    const titleEl = $(el).find('h2.jobTitle, a.jcs-JobTitle');
-                    const title = titleEl.text().trim();
+                $('.job_seen_beacon, .resultContent, [class*="jobsearch-SerpJobCard"]').each((i, el) => {
+    const titleEl = $(el).find('h2.jobTitle, a.jcs-JobTitle');
+    const title = titleEl.text().trim();
+    
+    // Lấy Link Indeed (phải cộng thêm domain)
+    const relativeLink = titleEl.find('a').attr('href') || titleEl.attr('href');
+    const fullLink = relativeLink ? `https://ca.indeed.com${relativeLink}` : 'N/A';
 
-                    // Lấy Link Indeed
-                    const relativeLink = titleEl.find('a').attr('href') || titleEl.attr('href');
-                    const fullLink = relativeLink ? `https://ca.indeed.com${relativeLink}` : 'N/A';
+    // Lấy tên công ty
+    const company = $(el).find('[data-testid="company-name"], .companyName').text().trim();
 
-                    // Lấy Tên công ty
-                    const company = $(el).find('[data-testid="company-name"], .companyName').text().trim();
-
-                    if (title) {
-                        allJobs.push({
-                            Title: title,
-                            Company: company || "N/A",
-                            Link: fullLink,
-                            Keyword: kw
-                        });
-                        count++;
-                    }
-                });
+    if (title) {
+        allJobs.push({ 
+            Title: title, 
+            Company: company || "N/A", 
+            Link: fullLink, 
+            Keyword: kw 
+        });
+        count++;
+    }
+});
             } catch (err) {
                 console.log(`⚠️ Lần ${attempts} lỗi: ${err.message}`);
                 if (attempts < maxAttempts) await new Promise(r => setTimeout(r, 5000));
@@ -163,10 +163,10 @@ async function runScraper() {
 
         // Gửi tất cả báo cáo
         await Promise.all([
-    sendTelegramAlert(`✅ Đã quét xong! Tìm thấy ${allJobs.length} jobs.`),
-    sendTelegramFile(fileName),
-    sendToTeams(allJobs.length, fileLink) // Gửi link Catbox sang Teams
-]);
+            sendTelegramAlert(`✅ Đã quét xong! Tìm thấy ${allJobs.length} jobs.`),
+            sendTelegramFile(fileName),
+            sendToTeams(allJobs.length, fileLink) // Gửi link Catbox sang Teams
+        ]);
         console.log("🏁 Hoàn tất tất cả báo cáo.");
     }
 }
