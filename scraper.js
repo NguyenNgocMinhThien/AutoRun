@@ -13,6 +13,7 @@ const KEYWORDS = ["Analyst", "CFA", "CEO", "Data Science", "FP&A"];
 // --- 1. SỬA HÀM UPLOAD DRIVE (XÓA BỎ ID THƯ MỤC VÍ DỤ) ---
 async function uploadToDriveAndGetLink(fileName) {
     try {
+        console.log("📤 Đang tải file lên Google Drive...");
         const credentials = JSON.parse(process.env.GDRIVE_SERVICE_ACCOUNT_JSON);
         const auth = new google.auth.GoogleAuth({
             credentials,
@@ -20,7 +21,7 @@ async function uploadToDriveAndGetLink(fileName) {
         });
         const drive = google.drive({ version: 'v3', auth });
 
-        // Phải có 'parents' trỏ về ID thư mục bạn đã share quyền Editor
+        // ID thư mục Thiện đã gửi: 1EUAo7fNuhagyh3J41DM-shaMP0MaU-F2
         const fileMetadata = { 
             'name': fileName,
             'parents': ['1EUAo7fNuhagyh3J41DM-shaMP0MaU-F2'] 
@@ -37,18 +38,62 @@ async function uploadToDriveAndGetLink(fileName) {
             fields: 'id, webViewLink',
         });
 
-        // Cấp quyền xem cho mọi người để nút bấm trên Teams hoạt động
+        // Lệnh này để nút bấm trên Teams có thể mở được file
         await drive.permissions.create({
             fileId: file.data.id,
             requestBody: { role: 'reader', type: 'anyone' },
         });
 
-        console.log("✅ File đã lên Drive thành công!");
+        console.log("✅ Drive thành công! Link:", file.data.webViewLink);
         return file.data.webViewLink;
     } catch (error) {
-        console.error("❌ Lỗi Drive:", error.message);
-        // Trả về link GitHub nếu upload thất bại
-        return "https://github.com/NguyenNgocMinhThien/AutoRun/"; 
+        console.error("❌ Lỗi Drive triệt để:", error.message);
+        // Trả về link folder nếu không upload được file cụ thể
+        return "https://drive.google.com/drive/folders/1EUAo7fNuhagyh3J41DM-shaMP0MaU-F2"; 
+    }
+}
+
+async function sendToTeams(totalJobs, driveLink) {
+    const webhookUrl = process.env.TEAMS_WEBHOOK_URL;
+    if (!webhookUrl) return;
+
+    // Cấu trúc Card đầy đủ để gửi thẳng, tránh bị trắng thẻ
+    const adaptiveCard = {
+        "type": "AdaptiveCard",
+        "version": "1.4",
+        "body": [
+            {
+                "type": "TextBlock",
+                "text": "🚀 CẬP NHẬT JOB MỚI TẠI VANCOUVER",
+                "weight": "Bolder",
+                "size": "Medium",
+                "color": "Accent"
+            },
+            {
+                "type": "FactSet",
+                "facts": [
+                    { "title": "Nguồn:", "value": "Indeed Canada" },
+                    { "title": "Số lượng:", "value": `${totalJobs} jobs` },
+                    { "title": "Trạng thái:", "value": "Đã sẵn sàng ✅" }
+                ]
+            }
+        ],
+        "actions": [
+            {
+                "type": "Action.OpenUrl",
+                "title": "📥 TẢI FILE EXCEL VỀ MÁY",
+                "url": driveLink
+            }
+        ],
+        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json"
+    };
+
+    try {
+        // Gửi nguyên cục JSON sang Power Automate
+        await axios.post(webhookUrl, adaptiveCard);
+        console.log("✅ [Teams] Đã bắn Card thành công!");
+    } catch (error) {
+        console.error("❌ [Teams] Lỗi gửi:", error.message);
     }
 }
 // --- 2. SỬA HÀM SEND TO TEAMS (GỬI CARD TRỰC TIẾP) ---
