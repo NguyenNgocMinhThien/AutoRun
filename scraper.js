@@ -12,42 +12,44 @@ const KEYWORDS = ["Analyst", "CFA", "CEO", "Data Science", "FP&A"];
 
 // --- HÀM GỬI TEAMS QUA WORKFLOW URL (DÙNG LINK BẠN GỬI) ---
 async function sendToTeams(jobCounts) {
-    const webhookUrl = "https://default623b73c907ff40a09b5f9530629ae2.dc.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/e73e4f2f5ee4408fae5d8a0f00d8a25d/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=aHvqwoqmo9julzI0hBW0mBVlKN7wA2C0Q6UtNKmPjUU";
+    // Gọi link từ Secret thay vì dán trực tiếp
+    const webhookUrl = process.env.TEAMS_WEBHOOK_URL;
     
-    const totalJobs = Object.values(jobCounts).reduce((a, b) => a + b, 0);
-    const details = Object.entries(jobCounts).map(([k, v]) => `${k}: ${v}`).join(", ");
+    if (!webhookUrl) {
+        console.error("❌ Thiếu TEAMS_WEBHOOK_URL trong GitHub Secrets!");
+        return;
+    }
 
-    // Cấu trúc BẮT BUỘC để template "Send webhook alerts" không bị Failed
+    const totalJobs = Object.values(jobCounts).reduce((a, b) => a + b, 0);
+    const details = Object.entries(jobCounts).map(([k, v]) => `- ${k}: ${v} jobs`).join("\n");
+
+    // Dùng cấu trúc MessageCard (đã test là ổn định nhất cho Teams)
     const payload = {
-        "type": "message",
-        "attachments": [
-            {
-                "contentType": "application/vnd.microsoft.card.adaptive",
-                "content": {
-                    "type": "AdaptiveCard",
-                    "version": "1.4",
-                    "body": [
-                        { "type": "TextBlock", "text": "🚀 CẬP NHẬT JOB MỚI TẠI VANCOUVER", "weight": "Bolder", "size": "Medium", "color": "Accent" },
-                        { "type": "FactSet", "facts": [
-                            { "title": "Nguồn:", "value": "Indeed Canada" },
-                            { "title": "Số lượng:", "value": `${totalJobs} jobs` },
-                            { "title": "Chi tiết:", "value": details }
-                        ]},
-                        { "type": "TextBlock", "text": "Trạng thái: Tải về trực tiếp ✅", "isSubtle": true }
-                    ],
-                    "actions": [
-                        { "type": "Action.OpenUrl", "title": "💾 TẢI FILE EXCEL VỀ MÁY", "url": "https://github.com/thiennnm22/AutoRun/actions" }
-                    ]
-                }
-            }
-        ]
+        "@type": "MessageCard",
+        "@context": "http://schema.org/extensions",
+        "themeColor": "0076D7",
+        "summary": "Cập nhật Job Indeed",
+        "sections": [{
+            "activityTitle": "🚀 CẬP NHẬT JOB MỚI TẠI VANCOUVER",
+            "activitySubtitle": `Ngày: ${new Date().toLocaleDateString('vi-VN')}`,
+            "text": `**Tổng cộng: ${totalJobs} jobs**\n\n${details}`,
+            "markdown": true
+        }],
+        "potentialAction": [{
+            "@type": "OpenUri",
+            "name": "💾 TẢI FILE EXCEL VỀ MÁY",
+            "targets": [{
+                "os": "default", 
+                "uri": "https://github.com/thiennnm22/AutoRun/actions" 
+            }]
+        }]
     };
 
     try {
         await axios.post(webhookUrl, payload);
         console.log("✅ [Teams] Thẻ đã nổ trên Group Chat!");
     } catch (error) {
-        console.error("❌ [Teams] Lỗi:", error.message);
+        console.error("❌ [Teams] Lỗi gửi Webhook:", error.message);
     }
 }
 // --- CÁC HÀM PHỤ TRỢ ---
