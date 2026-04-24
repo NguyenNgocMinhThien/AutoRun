@@ -9,31 +9,31 @@ const require = createRequire(import.meta.url);
 const KEYWORDS = ["Analyst", "CFA", "CEO", "Data Science", "FP&A"];
 
 // --- HÀM UPLOAD LITTERBOX (CATBOX) ---
-// --- HÀM UPLOAD LITTERBOX (CATBOX) ---
 async function uploadToCatbox(filePath) {
     try {
         console.log("📤 Đang tải file lên Litterbox...");
         const form = new FormData();
         form.append('reqtype', 'fileupload');
-        form.append('time', '24h'); 
+        form.append('time', '24h');
         form.append('fileToUpload', fs.createReadStream(filePath));
 
         const response = await axios.post('https://litterbox.catbox.moe/resources/internals/api.php', form, {
             headers: form.getHeaders()
         });
 
-        const fileLink = response.data.trim();
-
-        // SỬA DÒNG NÀY: Chỉ cần kiểm tra xem có bắt đầu bằng https:// không
-        if (fileLink.includes('https://')) {
-            console.log("✅ Upload thành công! Link chính thức:", fileLink);
+        // SỬA Ở ĐÂY: Catbox trả về text thuần là link, không phải JSON
+        const fileLink = response.data.trim(); 
+        
+        if (fileLink.startsWith('https://')) {
+            console.log("✅ Upload thành công! Link:", fileLink);
             return fileLink;
         }
         
-        throw new Error("Phản hồi không phải link hợp lệ: " + fileLink);
+        throw new Error("Phản hồi không chứa link: " + fileLink);
     } catch (error) {
         console.error("❌ Lỗi Catbox:", error.message);
-        return `https://github.com/${process.env.GITHUB_REPOSITORY}/actions`;
+        // Trả về link dự phòng là chính repo của bạn để Card Teams không bị hỏng
+        return "https://github.com/NguyenNgocMinhThien/AutoRun/actions";
     }
 }
 
@@ -130,17 +130,10 @@ async function runScraper() {
                     const company = $(el).find('[data-testid="company-name"], .companyName').text().trim();
 
                     if (title) {
-                    allJobs.push({
-                        Title: title,
-                        Company: $(el).find('[data-testid="company-name"]').text().trim() || "N/A",
-                        Salary: salary,
-                        Location: location,
-                        'Apply Method': applyMethod,
-                        Link: relativeLink ? `https://ca.indeed.com${relativeLink}` : 'N/A',
-                        Keyword: kw
-                    });
-                }
-            });
+                        allJobs.push({ Title: title, Company: company || "N/A", Link: fullLink, Keyword: kw });
+                        count++;
+                    }
+                });
 
                 if (count > 0) {
                     console.log(`✅ Lấy được ${count} jobs cho ${kw}`);
