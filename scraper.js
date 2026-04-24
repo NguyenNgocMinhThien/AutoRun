@@ -11,6 +11,7 @@ const KEYWORDS = ["Analyst", "CFA", "CEO", "Data Science", "FP&A"];
 
 // --- HÀM UPLOAD GOOGLE DRIVE ---
 async function uploadToDriveAndGetLink(fileName) {
+    const folderId = '1EUAo7fNuhagyh3J41DM-shaMP0MaU-F2'; // Khai báo ở đầu hàm để dùng được bên dưới
     try {
         const credentials = JSON.parse(process.env.GDRIVE_SERVICE_ACCOUNT_JSON);
         const auth = new google.auth.GoogleAuth({
@@ -19,16 +20,13 @@ async function uploadToDriveAndGetLink(fileName) {
         });
         const drive = google.drive({ version: 'v3', auth });
 
-        // ID thư mục "job scraper" từ ảnh bạn cung cấp
-        const folderId = '1EUAo7fNuhagyh3J41DM-shaMP0MaU-F2';
-
         const fileMetadata = { 
             'name': fileName,
-            'parents': [folderId] // QUAN TRỌNG: Dòng này giúp giải quyết lỗi Quota
+            'parents': [folderId] // BẮT BUỘC có dòng này để dùng dung lượng của Thiện
         };
         
         const media = {
-            mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            mimeType: 'application/vnd.officedocument.spreadsheetml.sheet',
             body: fs.createReadStream(fileName),
         };
 
@@ -37,11 +35,9 @@ async function uploadToDriveAndGetLink(fileName) {
             resource: fileMetadata,
             media: media,
             fields: 'id, webViewLink',
-            // Ép buộc dùng dung lượng của chủ sở hữu thư mục
-            supportsAllDrives: true 
         });
 
-        // Cấp quyền Reader để nút trên Teams có thể mở file
+        // Cấp quyền xem cho mọi người (để nút trên Teams bấm là mở được)
         await drive.permissions.create({
             fileId: file.data.id,
             requestBody: { role: 'reader', type: 'anyone' },
@@ -51,7 +47,7 @@ async function uploadToDriveAndGetLink(fileName) {
         return file.data.webViewLink;
     } catch (error) {
         console.error("❌ Lỗi Drive:", error.message);
-        // Trả về link folder dự phòng nếu upload file lỗi
+        // Trả về link thư mục dự phòng nếu không upload được file lẻ
         return `https://drive.google.com/drive/folders/${folderId}`;
     }
 }
@@ -143,27 +139,27 @@ async function runScraper() {
 
                 const $ = cheerio.load(response.data);
                 let count = 0;
-                $('.job_seen_beacon, .resultContent, [class*="jobsearch-SerpJobCard"]').each((i, el) => {
-                    const titleEl = $(el).find('h2.jobTitle, a.jcs-JobTitle');
-                    const title = titleEl.text().trim();
+                $('.job_seen_beacon, .resultContent').each((i, el) => {
+    const titleEl = $(el).find('h2.jobTitle, a.jcs-JobTitle');
+    const title = titleEl.text().trim();
+    
+    // Lấy Link Indeed
+    const relativeLink = titleEl.find('a').attr('href') || titleEl.attr('href');
+    const fullLink = relativeLink ? `https://ca.indeed.com${relativeLink}` : 'N/A';
 
-                    // Lấy link gốc: Indeed dùng link tương đối, mình phải thêm domain vào
-                    const relativeLink = titleEl.find('a').attr('href') || titleEl.attr('href');
-                    const fullLink = relativeLink ? `https://ca.indeed.com${relativeLink}` : 'N/A';
+    // Lấy Tên công ty
+    const company = $(el).find('[data-testid="company-name"], .companyName').text().trim();
 
-                    // Lấy tên công ty
-                    const company = $(el).find('[data-testid="company-name"], .companyName').text().trim();
-
-                    if (title) {
-                        allJobs.push({
-                            Title: title,
-                            Company: company || "N/A",
-                            Link: fullLink,
-                            Keyword: kw
-                        });
-                        count++;
-                    }
-                });
+    if (title) {
+        allJobs.push({ 
+            Title: title, 
+            Company: company || "N/A", 
+            Link: fullLink, 
+            Keyword: kw 
+        });
+        count++;
+    }
+});
             } catch (err) {
                 console.log(`⚠️ Lần ${attempts} lỗi: ${err.message}`);
                 if (attempts < maxAttempts) await new Promise(r => setTimeout(r, 5000));
