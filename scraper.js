@@ -17,14 +17,14 @@ async function uploadToCatbox(filePath) {
         form.append('time', '24h'); // File tồn tại trong 24h
         form.append('fileToUpload', fs.createReadStream(filePath));
 
-        const response = await axios.post('https://litterbox.catbox.moe/resources/internals/api.php', form, {
+        const response = await axios.post('https://litter.catbox.moe/resources/internals/api.php', form, {
             headers: form.getHeaders()
         });
 
         // Catbox trả về text thuần là link, cần trim() để sạch dữ liệu
         const fileLink = response.data.trim();
 
-        if (fileLink.startsWith('https://litterbox.catbox.moe')) {
+        if (fileLink.startsWith('https://litter.catbox.moe')) {
             console.log("✅ Upload thành công! Link:", fileLink);
             return fileLink;
         }
