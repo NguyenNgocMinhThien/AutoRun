@@ -10,23 +10,17 @@ const require = createRequire(import.meta.url);
 const KEYWORDS = ["Analyst", "CFA", "CEO", "Data Science", "FP&A"];
 
 // --- HÀM UPLOAD GOOGLE DRIVE ---
+// --- 1. SỬA HÀM UPLOAD DRIVE (XÓA BỎ ID THƯ MỤC VÍ DỤ) ---
 async function uploadToDriveAndGetLink(fileName) {
     try {
         const credentials = JSON.parse(process.env.GDRIVE_SERVICE_ACCOUNT_JSON);
-        
-        // Khai báo kiểu này Google sẽ nhận diện tốt hơn
         const auth = new google.auth.GoogleAuth({
             credentials,
             scopes: ['https://www.googleapis.com/auth/drive.file'],
         });
-
         const drive = google.drive({ version: 'v3', auth });
 
-        const fileMetadata = { 
-            'name': fileName,
-            'parents': ['1Yy...your_folder_id_here...'] // (Tùy chọn) ID thư mục bạn đã share
-        };
-        
+        const fileMetadata = { 'name': fileName }; // Bỏ dòng 'parents' để nó tự tạo ở thư mục gốc
         const media = {
             mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             body: fs.createReadStream(fileName),
@@ -38,27 +32,26 @@ async function uploadToDriveAndGetLink(fileName) {
             fields: 'id, webViewLink',
         });
 
-        // Lệnh này quan trọng để nút bấm không bị báo lỗi "Cần quyền truy cập"
         await drive.permissions.create({
             fileId: file.data.id,
             requestBody: { role: 'reader', type: 'anyone' },
         });
 
+        console.log("✅ File đã lên Drive:", file.data.webViewLink);
         return file.data.webViewLink;
     } catch (error) {
         console.error("❌ Lỗi Drive:", error.message);
-        // Chỉ khi lỗi thật sự mới trả về link GitHub
         return "https://github.com/thiennnm22/AutoRun/actions"; 
     }
 }
 
-// --- HÀM GỬI TEAMS (DÙNG BIẾN ĐỘNG) ---
+// --- 2. SỬA HÀM SEND TO TEAMS (GỬI CARD TRỰC TIẾP) ---
 async function sendToTeams(totalJobs, driveLink) {
     const webhookUrl = process.env.TEAMS_WEBHOOK_URL;
     if (!webhookUrl) return;
 
-    // Tự dựng cấu trúc Adaptive Card ngay tại đây
-    const adaptiveCard = {
+    // Đây là cấu trúc JSON chuẩn để Power Automate nhận cục "Body" và đẩy thẳng lên Teams
+    const adaptiveCardContent = {
         "type": "AdaptiveCard",
         "version": "1.4",
         "body": [
@@ -75,37 +68,22 @@ async function sendToTeams(totalJobs, driveLink) {
                     { "title": "Số lượng:", "value": `${totalJobs} jobs` },
                     { "title": "Trạng thái:", "value": "Tải về trực tiếp ✅" }
                 ]
-            },
-            {
-                "type": "TextBlock",
-                "text": "Nguyễn Ngọc Minh Thiện used a Workflow template to send this card.",
-                "isSubtle": true,
-                "size": "Small",
-                "wrap": true
             }
         ],
         "actions": [
             {
                 "type": "Action.OpenUrl",
                 "title": "📥 TẢI FILE EXCEL VỀ MÁY",
-                "url": driveLink // Link Drive xịn sẽ nằm ở đây
+                "url": driveLink
             }
         ],
         "$schema": "http://adaptivecards.io/schemas/adaptive-card.json"
     };
 
     try {
-        // Gửi bọc trong thẻ "attachments" để Teams nhận diện đúng Card
-        await axios.post(webhookUrl, {
-            "type": "message",
-            "attachments": [
-                {
-                    "contentType": "application/vnd.microsoft.card.adaptive",
-                    "content": adaptiveCard
-                }
-            ]
-        });
-        console.log("✅ [Teams] Đã bắn Card xịn sang thành công!");
+        // GỬI THẲNG NỘI DUNG CARD - Power Automate lấy Body dán vào ô Adaptive Card là xong
+        await axios.post(webhookUrl, adaptiveCardContent); 
+        console.log("✅ [Teams] Đã bắn Card sang Power Automate!");
     } catch (error) {
         console.error("❌ [Teams] Lỗi gửi:", error.message);
     }
