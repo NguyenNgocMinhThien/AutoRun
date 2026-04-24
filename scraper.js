@@ -20,7 +20,12 @@ async function uploadToDriveAndGetLink(fileName) {
         });
         const drive = google.drive({ version: 'v3', auth });
 
-        const fileMetadata = { 'name': fileName }; // Bỏ dòng 'parents' để nó tự tạo ở thư mục gốc
+        // SỬA TẠI ĐÂY: Thêm lại 'parents' với ID thư mục bạn vừa gửi
+        const fileMetadata = { 
+            'name': fileName,
+            'parents': ['1EUAo7fNuhagyh3J41DM-shaMP0MaU-F2'] 
+        }; 
+
         const media = {
             mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             body: fs.createReadStream(fileName),
@@ -37,11 +42,12 @@ async function uploadToDriveAndGetLink(fileName) {
             requestBody: { role: 'reader', type: 'anyone' },
         });
 
-        console.log("✅ File đã lên Drive:", file.data.webViewLink);
+        console.log("✅ File đã lên Drive thành công:", file.data.webViewLink);
         return file.data.webViewLink;
     } catch (error) {
+        // Nếu lỗi Quota xuất hiện, nó sẽ nhảy vào đây và trả về link GitHub
         console.error("❌ Lỗi Drive:", error.message);
-        return "https://github.com/thiennnm22/AutoRun/actions"; 
+        return "https://github.com/NguyenNgocMinhThien/AutoRun/"; 
     }
 }
 
