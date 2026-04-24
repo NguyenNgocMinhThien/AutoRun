@@ -11,8 +11,9 @@ const nodemailer = require('nodemailer');
 const KEYWORDS = ["Analyst", "CFA", "CEO", "Data Science", "FP&A"];
 
 // --- HÀM GỬI TEAMS QUA WORKFLOW URL (DÙNG LINK BẠN GỬI) ---
+// --- HÀM GỬI TEAMS QUA WORKFLOW (DÙNG SECRET TEAMS_WEBHOOK_URL) ---
 async function sendToTeams(jobCounts) {
-    // Gọi link từ Secret thay vì dán trực tiếp
+    // Lấy link từ Secret mà bạn đã cài đặt
     const webhookUrl = process.env.TEAMS_WEBHOOK_URL;
     
     if (!webhookUrl) {
@@ -21,35 +22,65 @@ async function sendToTeams(jobCounts) {
     }
 
     const totalJobs = Object.values(jobCounts).reduce((a, b) => a + b, 0);
-    const details = Object.entries(jobCounts).map(([k, v]) => `- ${k}: ${v} jobs`).join("\n");
 
-    // Dùng cấu trúc MessageCard (đã test là ổn định nhất cho Teams)
+    // Payload chuẩn Adaptive Card để ra giao diện y hệt hình mẫu
     const payload = {
-        "@type": "MessageCard",
-        "@context": "http://schema.org/extensions",
-        "themeColor": "0076D7",
-        "summary": "Cập nhật Job Indeed",
-        "sections": [{
-            "activityTitle": "🚀 CẬP NHẬT JOB MỚI TẠI VANCOUVER",
-            "activitySubtitle": `Ngày: ${new Date().toLocaleDateString('vi-VN')}`,
-            "text": `**Tổng cộng: ${totalJobs} jobs**\n\n${details}`,
-            "markdown": true
-        }],
-        "potentialAction": [{
-            "@type": "OpenUri",
-            "name": "💾 TẢI FILE EXCEL VỀ MÁY",
-            "targets": [{
-                "os": "default", 
-                "uri": "https://github.com/thiennnm22/AutoRun/actions" 
-            }]
-        }]
+        "type": "message",
+        "attachments": [
+            {
+                "contentType": "application/vnd.microsoft.card.adaptive",
+                "content": {
+                    "type": "AdaptiveCard",
+                    "version": "1.4",
+                    "body": [
+                        {
+                            "type": "TextBlock",
+                            "text": "🚀 CẬP NHẬT JOB MỚI TẠI VANCOUVER",
+                            "weight": "Bolder",
+                            "size": "Medium"
+                        },
+                        {
+                            "type": "FactSet",
+                            "facts": [
+                                { "title": "Nguồn:", "value": "Indeed Canada" },
+                                { "title": "Số lượng:", "value": `${totalJobs} jobs` },
+                                { "title": "Trạng thái:", "value": "Tải về trực tiếp ✅" }
+                            ]
+                        },
+                        {
+                            "type": "TextBlock",
+                            "text": "Nguyễn Ngọc Minh Thiện used a Workflow template to send this card.",
+                            "isSubtle": true,
+                            "size": "Small",
+                            "wrap": true
+                        }
+                    ],
+                    "actions": [
+                        {
+                            "type": "Action.OpenUrl",
+                            "title": "📥 TẢI FILE EXCEL VỀ MÁY",
+                            "url": "https://github.com/thiennnm22/AutoRun/actions" 
+                        }
+                    ],
+                    "$schema": "http://adaptivecards.io/schemas/adaptive-card.json"
+                }
+            }
+        ]
     };
 
     try {
-        await axios.post(webhookUrl, payload);
-        console.log("✅ [Teams] Thẻ đã nổ trên Group Chat!");
+        // Lưu ý: Phải gửi kèm headers JSON thì Power Automate mới hiểu
+        await axios.post(webhookUrl, payload, {
+            headers: { 'Content-Type': 'application/json' }
+        });
+        console.log("✅ [Teams] Đã nổ card đẹp lung linh trên Group chat!");
     } catch (error) {
-        console.error("❌ [Teams] Lỗi gửi Webhook:", error.message);
+        // In ra lỗi chi tiết để debug nếu có vấn đề
+        if (error.response) {
+            console.error("❌ [Teams] Lỗi server:", error.response.data);
+        } else {
+            console.error("❌ [Teams] Lỗi kết nối:", error.message);
+        }
     }
 }
 // --- CÁC HÀM PHỤ TRỢ ---
