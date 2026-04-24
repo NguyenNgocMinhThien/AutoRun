@@ -4,41 +4,43 @@ import * as cheerio from 'cheerio';
 import fs from 'fs';
 import FormData from 'form-data';
 import { createRequire } from 'module';
-import { google } from 'googleapis';
 
 const require = createRequire(import.meta.url);
 const KEYWORDS = ["Analyst", "CFA", "CEO", "Data Science", "FP&A"];
 
-// --- HÀM UPLOAD GOOGLE DRIVE ---
+// --- HÀM UPLOAD LITTERBOX (CATBOX) ---
 async function uploadToCatbox(filePath) {
     try {
-        console.log("📤 Đang tải file lên Litterbox (Catbox)...");
+        console.log("📤 Đang tải file lên Litterbox...");
         const form = new FormData();
         form.append('reqtype', 'fileupload');
-        form.append('time', '24h'); // Lưu file trong 24 giờ
+        form.append('time', '24h'); // File tồn tại trong 24h
         form.append('fileToUpload', fs.createReadStream(filePath));
 
-        // Endpoint chuẩn của Litterbox
         const response = await axios.post('https://litterbox.catbox.moe/resources/internals/api.php', form, {
             headers: form.getHeaders()
         });
 
-        if (response.data && response.data.includes('https://litterbox.catbox.moe')) {
-            console.log("✅ Thành công! Link:", response.data);
-            return response.data;
+        // Catbox trả về text thuần là link, cần trim() để sạch dữ liệu
+        const fileLink = response.data.trim();
+
+        if (fileLink.startsWith('https://litterbox.catbox.moe')) {
+            console.log("✅ Upload thành công! Link:", fileLink);
+            return fileLink;
         }
-        throw new Error("Phản hồi không hợp lệ: " + response.data);
+        throw new Error("Phản hồi không chứa link hợp lệ: " + fileLink);
     } catch (error) {
         console.error("❌ Lỗi Catbox:", error.message);
-        return "https://github.com/NguyenNgocMinhThien/AutoRun/actions"; 
+        // Trả về link GitHub Action làm dự phòng nếu upload lỗi
+        return `https://github.com/${process.env.GITHUB_REPOSITORY}/actions`;
     }
 }
 
-async function sendToTeams(totalJobs, driveLink) {
+// --- HÀM GỬI TEAMS ---
+async function sendToTeams(totalJobs, fileLink) {
     const webhookUrl = process.env.TEAMS_WEBHOOK_URL;
     if (!webhookUrl) return;
 
-    // Payload chuẩn gửi trực tiếp qua Power Automate
     const adaptiveCard = {
         "type": "AdaptiveCard",
         "version": "1.4",
@@ -49,25 +51,25 @@ async function sendToTeams(totalJobs, driveLink) {
                 "facts": [
                     { "title": "Nguồn:", "value": "Indeed Canada" },
                     { "title": "Số lượng:", "value": `${totalJobs} jobs` },
-                    { "title": "Trạng thái:", "value": "Đã lưu vào Drive ✅" }
+                    { "title": "Trạng thái:", "value": "Đã sẵn sàng ✅" }
                 ]
             }
         ],
         "actions": [
-            { "type": "Action.OpenUrl", "title": "📥 TẢI FILE EXCEL VỀ MÁY", "url": driveLink }
+            { "type": "Action.OpenUrl", "title": "📥 TẢI FILE EXCEL VỀ MÁY", "url": fileLink }
         ],
         "$schema": "http://adaptivecards.io/schemas/adaptive-card.json"
     };
 
     try {
         await axios.post(webhookUrl, adaptiveCard);
-        console.log("✅ [Teams] Đã gửi thông báo thành công!");
+        console.log("✅ [Teams] Đã gửi Card thành công!");
     } catch (error) {
         console.error("❌ [Teams] Lỗi gửi:", error.message);
     }
 }
 
-// --- CÁC HÀM PHỤ TRỢ KHÁC ---
+// --- CÁC HÀM PHỤ TRỢ TELEGRAM ---
 async function sendTelegramAlert(message) {
     const botToken = process.env.TELEGRAM_TOKEN;
     const chatId = process.env.TELEGRAM_CHAT_ID;
@@ -93,27 +95,24 @@ async function sendTelegramFile(filePath) {
     } catch (e) { console.error("❌ Telegram File Error:", e.message); }
 }
 
-// --- HÀM CHẠY CHÍNH (GIỮ NGUYÊN LOGIC CỦA BẠN) ---
+// --- HÀM CHẠY CHÍNH ---
 async function runScraper() {
-    console.log("🚀 Khởi động Scraper siêu bền bỉ...");
+    console.log("🚀 Khởi động Scraper...");
     let allJobs = [];
-    let jobCounts = {};
 
     for (const kw of KEYWORDS) {
         const targetUrl = `https://ca.indeed.com/jobs?q=${encodeURIComponent(kw + ' $60,000')}&l=Vancouver%2C+BC&radius=25&fromage=3`;
         let attempts = 0;
-        let success = false;
-        const maxAttempts = 5;
+        const maxAttempts = 3;
 
-        while (attempts < maxAttempts && !success) {
+        while (attempts < maxAttempts) {
             try {
                 attempts++;
-                console.log(`🔍 Đang quét: ${kw} (Lần thử ${attempts}/${maxAttempts})...`);
+                console.log(`🔍 Quét: ${kw} (Lần ${attempts})...`);
                 const response = await axios.get('http://api.scraperapi.com', {
                     params: {
                         api_key: process.env.SCRAPER_API_KEY,
                         url: targetUrl,
-                        render: 'false',
                         country_code: 'ca'
                     },
                     timeout: 60000
@@ -121,29 +120,26 @@ async function runScraper() {
 
                 const $ = cheerio.load(response.data);
                 let count = 0;
-                $('.job_seen_beacon, .resultContent, [class*="jobsearch-SerpJobCard"]').each((i, el) => {
-    const titleEl = $(el).find('h2.jobTitle, a.jcs-JobTitle');
-    const title = titleEl.text().trim();
-    
-    // Lấy Link Indeed (phải cộng thêm domain)
-    const relativeLink = titleEl.find('a').attr('href') || titleEl.attr('href');
-    const fullLink = relativeLink ? `https://ca.indeed.com${relativeLink}` : 'N/A';
+                
+                $('.job_seen_beacon, .resultContent').each((i, el) => {
+                    const titleEl = $(el).find('h2.jobTitle, a.jcs-JobTitle');
+                    const title = titleEl.text().trim();
+                    const relativeLink = titleEl.find('a').attr('href') || titleEl.attr('href');
+                    const fullLink = relativeLink ? `https://ca.indeed.com${relativeLink}` : 'N/A';
+                    const company = $(el).find('[data-testid="company-name"], .companyName').text().trim();
 
-    // Lấy tên công ty
-    const company = $(el).find('[data-testid="company-name"], .companyName').text().trim();
+                    if (title) {
+                        allJobs.push({ Title: title, Company: company || "N/A", Link: fullLink, Keyword: kw });
+                        count++;
+                    }
+                });
 
-    if (title) {
-        allJobs.push({ 
-            Title: title, 
-            Company: company || "N/A", 
-            Link: fullLink, 
-            Keyword: kw 
-        });
-        count++;
-    }
-});
+                if (count > 0) {
+                    console.log(`✅ Lấy được ${count} jobs cho ${kw}`);
+                    break; 
+                }
             } catch (err) {
-                console.log(`⚠️ Lần ${attempts} lỗi: ${err.message}`);
+                console.log(`⚠️ Lỗi ${kw}: ${err.message}`);
                 if (attempts < maxAttempts) await new Promise(r => setTimeout(r, 5000));
             }
         }
@@ -156,18 +152,17 @@ async function runScraper() {
         XLSX.utils.book_append_sheet(workbook, worksheet, "Jobs");
         XLSX.writeFile(workbook, fileName);
 
-        console.log("📤 Đang xử lý upload và gửi báo cáo...");
-
-        // BƯỚC QUAN TRỌNG: Upload Drive trước để lấy link
+        console.log("📤 Bắt đầu gửi báo cáo...");
         const fileLink = await uploadToCatbox(fileName);
 
-        // Gửi tất cả báo cáo
         await Promise.all([
-            sendTelegramAlert(`✅ Đã quét xong! Tìm thấy ${allJobs.length} jobs.`),
+            sendTelegramAlert(`✅ Tìm thấy ${allJobs.length} jobs mới!`),
             sendTelegramFile(fileName),
-            sendToTeams(allJobs.length, fileLink) // Gửi link Catbox sang Teams
+            sendToTeams(allJobs.length, fileLink)
         ]);
-        console.log("🏁 Hoàn tất tất cả báo cáo.");
+        console.log("🏁 Hoàn tất!");
+    } else {
+        console.log("❌ Không tìm thấy job nào.");
     }
 }
 
