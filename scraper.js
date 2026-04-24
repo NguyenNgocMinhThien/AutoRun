@@ -10,77 +10,61 @@ const nodemailer = require('nodemailer');
 
 const KEYWORDS = ["Analyst", "CFA", "CEO", "Data Science", "FP&A"];
 
-// --- HÀM GỬI TEAMS QUA WORKFLOW URL (DÙNG LINK BẠN GỬI) ---
-// --- HÀM GỬI TEAMS QUA WORKFLOW (DÙNG SECRET TEAMS_WEBHOOK_URL) ---
 async function sendToTeams(jobCounts) {
-    // Lấy link từ Secret mà bạn đã cài đặt
     const webhookUrl = process.env.TEAMS_WEBHOOK_URL;
     
     if (!webhookUrl) {
-        console.error("❌ Thiếu TEAMS_WEBHOOK_URL trong GitHub Secrets!");
+        console.error("❌ Thiếu TEAMS_WEBHOOK_URL!");
         return;
     }
 
     const totalJobs = Object.values(jobCounts).reduce((a, b) => a + b, 0);
 
-    // Payload chuẩn Adaptive Card để ra giao diện y hệt hình mẫu
-    const payload = {
-        "type": "message",
-        "attachments": [
+    // Gửi thẳng JSON của Adaptive Card - KHÔNG bọc thêm gì bên ngoài
+    const adaptiveCard = {
+        "type": "AdaptiveCard",
+        "version": "1.4",
+        "body": [
             {
-                "contentType": "application/vnd.microsoft.card.adaptive",
-                "content": {
-                    "type": "AdaptiveCard",
-                    "version": "1.4",
-                    "body": [
-                        {
-                            "type": "TextBlock",
-                            "text": "🚀 CẬP NHẬT JOB MỚI TẠI VANCOUVER",
-                            "weight": "Bolder",
-                            "size": "Medium"
-                        },
-                        {
-                            "type": "FactSet",
-                            "facts": [
-                                { "title": "Nguồn:", "value": "Indeed Canada" },
-                                { "title": "Số lượng:", "value": `${totalJobs} jobs` },
-                                { "title": "Trạng thái:", "value": "Tải về trực tiếp ✅" }
-                            ]
-                        },
-                        {
-                            "type": "TextBlock",
-                            "text": "Nguyễn Ngọc Minh Thiện used a Workflow template to send this card.",
-                            "isSubtle": true,
-                            "size": "Small",
-                            "wrap": true
-                        }
-                    ],
-                    "actions": [
-                        {
-                            "type": "Action.OpenUrl",
-                            "title": "📥 TẢI FILE EXCEL VỀ MÁY",
-                            "url": "https://github.com/thiennnm22/AutoRun/actions" 
-                        }
-                    ],
-                    "$schema": "http://adaptivecards.io/schemas/adaptive-card.json"
-                }
+                "type": "TextBlock",
+                "text": "🚀 CẬP NHẬT JOB MỚI TẠI VANCOUVER",
+                "weight": "Bolder",
+                "size": "Medium"
+            },
+            {
+                "type": "FactSet",
+                "facts": [
+                    { "title": "Nguồn:", "value": "Indeed Canada" },
+                    { "title": "Số lượng:", "value": `${totalJobs} jobs` },
+                    { "title": "Trạng thái:", "value": "Tải về trực tiếp ✅" }
+                ]
+            },
+            {
+                "type": "TextBlock",
+                "text": "Nguyễn Ngọc Minh Thiện used a Workflow template to send this card.",
+                "isSubtle": true,
+                "size": "Small",
+                "wrap": true
             }
-        ]
+        ],
+        "actions": [
+            {
+                "type": "Action.OpenUrl",
+                "title": "📥 TẢI FILE EXCEL VỀ MÁY",
+                "url": "https://github.com/thiennnm22/AutoRun/actions"
+            }
+        ],
+        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json"
     };
 
     try {
-        // Lưu ý: Phải gửi kèm headers JSON thì Power Automate mới hiểu
-        await axios.post(webhookUrl, payload, {
+        // Gửi POST request với header JSON chuẩn
+        await axios.post(webhookUrl, adaptiveCard, {
             headers: { 'Content-Type': 'application/json' }
         });
-        console.log("✅ [Teams] Đã nổ card đẹp lung linh trên Group chat!");
+        console.log("✅ [Teams] Đã gửi Card thành công!");
     } catch (error) {
-        // In ra lỗi chi tiết để debug nếu có vấn đề
-        if (error.response) {
-            console.error("❌ [Teams] Lỗi server:", error.response.data);
-        } else {
-            console.error("❌ [Teams] Lỗi kết nối:", error.message);
-        }
+        console.error("❌ [Teams] Lỗi gửi:", error.response?.data || error.message);
     }
 }
 // --- CÁC HÀM PHỤ TRỢ ---
