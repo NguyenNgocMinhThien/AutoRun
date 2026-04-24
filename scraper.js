@@ -19,14 +19,14 @@ async function uploadToDriveAndGetLink(fileName) {
         });
         const drive = google.drive({ version: 'v3', auth });
 
-        // ID thư mục "job scraper" của Thiện
+        // ID thư mục "job scraper" từ ảnh bạn cung cấp
         const folderId = '1EUAo7fNuhagyh3J41DM-shaMP0MaU-F2';
 
-        const fileMetadata = {
+        const fileMetadata = { 
             'name': fileName,
-            'parents': [folderId] // BẮT BUỘC có dòng này để tránh lỗi Quota
+            'parents': [folderId] // QUAN TRỌNG: Dòng này giúp giải quyết lỗi Quota
         };
-
+        
         const media = {
             mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             body: fs.createReadStream(fileName),
@@ -37,6 +37,8 @@ async function uploadToDriveAndGetLink(fileName) {
             resource: fileMetadata,
             media: media,
             fields: 'id, webViewLink',
+            // Ép buộc dùng dung lượng của chủ sở hữu thư mục
+            supportsAllDrives: true 
         });
 
         // Cấp quyền Reader để nút trên Teams có thể mở file
@@ -49,8 +51,8 @@ async function uploadToDriveAndGetLink(fileName) {
         return file.data.webViewLink;
     } catch (error) {
         console.error("❌ Lỗi Drive:", error.message);
-        // Trả về link folder dự phòng
-        return `https://drive.google.com/drive/folders/1EUAo7fNuhagyh3J41DM-shaMP0MaU-F2`;
+        // Trả về link folder dự phòng nếu upload file lỗi
+        return `https://drive.google.com/drive/folders/${folderId}`;
     }
 }
 
