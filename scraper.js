@@ -11,7 +11,7 @@ const nodemailer = require('nodemailer');
 const KEYWORDS = ["Analyst", "CFA", "CEO", "Data Science", "FP&A"];
 
 async function sendToTeams(jobCounts) {
-    const webhookUrl = process.env.TEAMS_WEBHOOK_URL;
+    const webhookUrl = 'https://default623b73c907ff40a09b5f9530629ae2.dc.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/8294d7a86b51436e9d56a48e189dda26/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=8jmphJcxDNiWyP_-s3MMCws3Dvu6-GKayXPMBdCpzqk';
     
     if (!webhookUrl) {
         console.error("❌ Thiếu TEAMS_WEBHOOK_URL!");
