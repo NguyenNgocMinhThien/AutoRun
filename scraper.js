@@ -6,7 +6,11 @@ import FormData from 'form-data';
 import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
-const KEYWORDS = ["Analyst", "CFA", "CEO", "Data Science", "FP&A"];
+const KEYWORDS = [
+    "Analyst", "FP&A", "Investment", "Quantitative Researcher", "Data Science",
+    "CFA", "Actuarial", "PhD", "Research", "Trader", "President", "CEO",
+    "CIO", "CTO", "CSO", "Chief AI Officer"
+];
 
 // --- HÀM UPLOAD LITTERBOX (CATBOX) ---
 async function uploadToCatbox(filePath) {
@@ -21,19 +25,17 @@ async function uploadToCatbox(filePath) {
             headers: form.getHeaders()
         });
 
-        // SỬA Ở ĐÂY: Catbox trả về text thuần là link, không phải JSON
-        const fileLink = response.data.trim(); 
-        
-        if (fileLink.startsWith('https://')) {
-            console.log("✅ Upload thành công! Link:", fileLink);
+        const fileLink = response.data.trim();
+
+        if (fileLink.includes('https://')) {
+            console.log("✅ Upload thành công! Link chính thức:", fileLink);
             return fileLink;
         }
-        
-        throw new Error("Phản hồi không chứa link: " + fileLink);
+
+        throw new Error("Phản hồi không phải link hợp lệ: " + fileLink);
     } catch (error) {
         console.error("❌ Lỗi Catbox:", error.message);
-        // Trả về link dự phòng là chính repo của bạn để Card Teams không bị hỏng
-        return "https://github.com/NguyenNgocMinhThien/AutoRun/actions";
+        return `https://github.com/${process.env.GITHUB_REPOSITORY}/actions`;
     }
 }
 
@@ -43,23 +45,29 @@ async function sendToTeams(totalJobs, fileLink) {
     if (!webhookUrl) return;
 
     const adaptiveCard = {
-        "type": "AdaptiveCard",
-        "version": "1.4",
-        "body": [
-            { "type": "TextBlock", "text": "🚀 CẬP NHẬT JOB MỚI TẠI VANCOUVER", "weight": "Bolder", "size": "Medium", "color": "Accent" },
-            {
-                "type": "FactSet",
-                "facts": [
-                    { "title": "Nguồn:", "value": "Indeed Canada" },
-                    { "title": "Số lượng:", "value": `${totalJobs} jobs` },
-                    { "title": "Trạng thái:", "value": "Đã sẵn sàng ✅" }
-                ]
+        "type": "message",
+        "attachments": [{
+            "contentType": "application/vnd.microsoft.card.adaptive",
+            "content": {
+                "type": "AdaptiveCard",
+                "version": "1.4",
+                "body": [
+                    { "type": "TextBlock", "text": "🚀 CẬP NHẬT JOB MỚI TẠI VANCOUVER", "weight": "Bolder", "size": "Medium", "color": "Accent" },
+                    {
+                        "type": "FactSet",
+                        "facts": [
+                            { "title": "Nguồn:", "value": "Indeed Canada" },
+                            { "title": "Số lượng:", "value": `${totalJobs} jobs` },
+                            { "title": "Trạng thái:", "value": "Đã sẵn sàng ✅" }
+                        ]
+                    }
+                ],
+                "actions": [
+                    { "type": "Action.OpenUrl", "title": "📥 TẢI FILE EXCEL VỀ MÁY", "url": fileLink }
+                ],
+                "$schema": "http://adaptivecards.io/schemas/adaptive-card.json"
             }
-        ],
-        "actions": [
-            { "type": "Action.OpenUrl", "title": "📥 TẢI FILE EXCEL VỀ MÁY", "url": fileLink }
-        ],
-        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json"
+        }]
     };
 
     try {
@@ -102,6 +110,7 @@ async function runScraper() {
     let allJobs = [];
 
     for (const kw of KEYWORDS) {
+        // Lọc lương $60k+ ngay trên URL của Indeed để kết quả chất lượng hơn
         const targetUrl = `https://ca.indeed.com/jobs?q=${encodeURIComponent(kw + ' $60,000')}&l=Vancouver%2C+BC&radius=25&fromage=3`;
         let attempts = 0;
         const maxAttempts = 3;
@@ -114,7 +123,8 @@ async function runScraper() {
                     params: {
                         api_key: process.env.SCRAPER_API_KEY,
                         url: targetUrl,
-                        country_code: 'ca'
+                        country_code: 'ca',
+                        render: 'true' // Phải có để lấy được Salary và vượt chống bot
                     },
                     timeout: 60000
                 });
@@ -122,18 +132,29 @@ async function runScraper() {
                 const $ = cheerio.load(response.data);
                 let count = 0;
                 
-                $('.job_seen_beacon, .resultContent').each((i, el) => {
+                $('.job_seen_beacon').each((i, el) => {
                     const titleEl = $(el).find('h2.jobTitle, a.jcs-JobTitle');
                     const title = titleEl.text().trim();
                     const relativeLink = titleEl.find('a').attr('href') || titleEl.attr('href');
-                    const fullLink = relativeLink ? `https://ca.indeed.com${relativeLink}` : 'N/A';
-                    const company = $(el).find('[data-testid="company-name"], .companyName').text().trim();
-
+                    
                     if (title) {
-                        allJobs.push({ Title: title, Company: company || "N/A", Link: fullLink, Keyword: kw });
+                        const salary = $(el).find('.salary-section, .estimated-salary, .attribute_snippet, [class*="salary"]').text().trim() || "N/A";
+                        const location = $(el).find('[data-testid="text-location"], .companyLocation, .location').text().trim() || "Vancouver, BC";
+                        const isQuickApply = $(el).find('.iaIcon, .jobsearch-IndeedApplyButton').length > 0;
+                        const applyMethod = isQuickApply ? "Indeed Quick Apply" : "Company Website";
+
+                        allJobs.push({
+                            Title: title,
+                            Company: $(el).find('[data-testid="company-name"], .companyName').text().trim() || "N/A",
+                            Salary: salary,
+                            Location: location,
+                            'Apply Method': applyMethod,
+                            Link: relativeLink ? `https://ca.indeed.com${relativeLink}` : 'N/A',
+                            Keyword: kw
+                        });
                         count++;
                     }
-                });
+                }); 
 
                 if (count > 0) {
                     console.log(`✅ Lấy được ${count} jobs cho ${kw}`);
