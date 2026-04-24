@@ -10,48 +10,27 @@ const require = createRequire(import.meta.url);
 const KEYWORDS = ["Analyst", "CFA", "CEO", "Data Science", "FP&A"];
 
 // --- HÀM UPLOAD GOOGLE DRIVE ---
-async function uploadToDriveAndGetLink(fileName) {
-    const folderId = '1EUAo7fNuhagyh3J41DM-shaMP0MaU-F2'; // Thư mục bạn đã share
+async function uploadToCatbox(filePath) {
     try {
-        const credentials = JSON.parse(process.env.GDRIVE_SERVICE_ACCOUNT_JSON);
-        const auth = new google.auth.GoogleAuth({
-            credentials,
-            scopes: ['https://www.googleapis.com/auth/drive.file'],
-        });
-        const drive = google.drive({ version: 'v3', auth });
+        console.log("📤 Đang tải file lên Catbox...");
+        const form = new FormData();
+        form.append('reqtype', 'fileupload');
+        form.append('time', '72h'); // Lưu file trong 72 giờ
+        form.append('fileToUpload', fs.createReadStream(filePath));
 
-        const fileMetadata = { 
-            'name': fileName,
-            'parents': [folderId] // BẮT BUỘC: Đưa file vào nhà của bạn để dùng dung lượng của bạn
-        };
-        
-        const media = {
-            mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            body: fs.createReadStream(fileName),
-        };
-
-        console.log("📤 Đang đẩy file vào thư mục Drive...");
-        const file = await drive.files.create({
-    resource: fileMetadata,
-    media: media,
-    fields: 'id, webViewLink',
-    // THÊM 2 DÒNG NÀY ĐỂ GIẢI QUYẾT QUOTA CỨNG ĐẦU
-    supportsAllDrives: true,
-    keepRevisionForever: false 
-});
-
-        // Chia sẻ công khai file lẻ này để nút bấm trên Teams có thể tải về
-        await drive.permissions.create({
-            fileId: file.data.id,
-            requestBody: { role: 'reader', type: 'anyone' },
+        const response = await axios.post('https://litter.catbox.moe/resources/internals/api.php', form, {
+            headers: form.getHeaders()
         });
 
-        console.log("✅ Thành công! File ID:", file.data.id);
-        return file.data.webViewLink;
+        if (response.data && response.data.startsWith('https://')) {
+            console.log("✅ Thành công! Link Catbox:", response.data);
+            return response.data;
+        }
+        throw new Error("Phản hồi từ Catbox không hợp lệ");
     } catch (error) {
-        console.error("❌ Lỗi Drive:", error.message);
-        // Trả về link thư mục dự phòng để nút bấm vẫn có chỗ để trỏ đến
-        return `https://drive.google.com/drive/folders/${folderId}`;
+        console.error("❌ Lỗi Catbox:", error.message);
+        // Nếu Catbox lỗi, trả về một link thông báo lỗi để card Teams không bị trống
+        return "https://github.com/NguyenNgocMinhThien/AutoRun/actions";
     }
 }
 
@@ -180,14 +159,14 @@ async function runScraper() {
         console.log("📤 Đang xử lý upload và gửi báo cáo...");
 
         // BƯỚC QUAN TRỌNG: Upload Drive trước để lấy link
-        const driveLink = await uploadToDriveAndGetLink(fileName);
+        const fileLink = await uploadToCatbox(fileName);
 
         // Gửi tất cả báo cáo
         await Promise.all([
-            sendTelegramAlert(`✅ Đã quét xong! Tìm thấy ${allJobs.length} jobs.`),
-            sendTelegramFile(fileName),
-            sendToTeams(allJobs.length, driveLink) // Gửi link Drive và số lượng thật sang Teams
-        ]);
+    sendTelegramAlert(`✅ Đã quét xong! Tìm thấy ${allJobs.length} jobs.`),
+    sendTelegramFile(fileName),
+    sendToTeams(allJobs.length, fileLink) // Gửi link Catbox sang Teams
+]);
         console.log("🏁 Hoàn tất tất cả báo cáo.");
     }
 }
