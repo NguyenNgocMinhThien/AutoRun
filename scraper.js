@@ -98,25 +98,31 @@ async function sendTelegramFile(filePath) {
 
 // --- HÀM CHẠY CHÍNH ---
 async function runScraper() {
-    console.log("🚀 Bắt đầu quét dữ liệu chi tiết...");
+    console.log("🚀 Khởi động Scraper...");
     let allJobs = [];
 
     for (const kw of KEYWORDS) {
-        // Thêm tham số lương tối thiểu trực tiếp vào URL để lọc tốt hơn
-        const targetUrl = `https://ca.indeed.com/jobs?q=${encodeURIComponent(kw)}&l=Vancouver%2C+BC&radius=25&fromage=3&sc=0kf%3Aattr(EXS8M)%3B`;
-        
-        try {
-            const response = await axios.get('http://api.scraperapi.com', {
-                params: {
-                    api_key: process.env.SCRAPER_API_KEY,
-                    url: targetUrl,
-                    country_code: 'ca'
-                }
-            });
+        const targetUrl = `https://ca.indeed.com/jobs?q=${encodeURIComponent(kw + ' $60,000')}&l=Vancouver%2C+BC&radius=25&fromage=3`;
+        let attempts = 0;
+        const maxAttempts = 3;
 
-            const $ = cheerio.load(response.data);
-            
-            $('.job_seen_beacon').each((i, el) => {
+        while (attempts < maxAttempts) {
+            try {
+                attempts++;
+                console.log(`🔍 Quét: ${kw} (Lần ${attempts})...`);
+                const response = await axios.get('http://api.scraperapi.com', {
+                    params: {
+                        api_key: process.env.SCRAPER_API_KEY,
+                        url: targetUrl,
+                        country_code: 'ca'
+                    },
+                    timeout: 60000
+                });
+
+                const $ = cheerio.load(response.data);
+                let count = 0;
+                
+                $('.job_seen_beacon').each((i, el) => {
                 const titleEl = $(el).find('h2.jobTitle, a.jcs-JobTitle');
                 const title = titleEl.text().trim();
                 const relativeLink = titleEl.find('a').attr('href') || titleEl.attr('href');
@@ -131,7 +137,7 @@ async function runScraper() {
                 const isQuickApply = $(el).find('.iaIcon').length > 0;
                 const applyMethod = isQuickApply ? "Indeed Quick Apply" : "Company Website";
 
-                if (title) {
+                    if (title) {
                     allJobs.push({
                         Title: title,
                         Company: $(el).find('[data-testid="company-name"]').text().trim() || "N/A",
@@ -142,10 +148,16 @@ async function runScraper() {
                         Keyword: kw
                     });
                 }
-            });
-            console.log(`✅ Lấy xong ${kw}`);
-        } catch (err) {
-            console.log(`⚠️ Lỗi quét ${kw}: ${err.message}`);
+            }); 
+
+                if (count > 0) {
+                    console.log(`✅ Lấy được ${count} jobs cho ${kw}`);
+                    break; 
+                }
+            } catch (err) {
+                console.log(`⚠️ Lỗi ${kw}: ${err.message}`);
+                if (attempts < maxAttempts) await new Promise(r => setTimeout(r, 5000));
+            }
         }
     }
 
@@ -156,9 +168,17 @@ async function runScraper() {
         XLSX.utils.book_append_sheet(workbook, worksheet, "Jobs");
         XLSX.writeFile(workbook, fileName);
 
+        console.log("📤 Bắt đầu gửi báo cáo...");
         const fileLink = await uploadToCatbox(fileName);
-        // Sau đó gọi các hàm sendTelegram và sendToTeams với fileLink này
-        console.log("🏁 Hoàn tất báo cáo với đầy đủ thông tin.");
+
+        await Promise.all([
+            sendTelegramAlert(`✅ Tìm thấy ${allJobs.length} jobs mới!`),
+            sendTelegramFile(fileName),
+            sendToTeams(allJobs.length, fileLink)
+        ]);
+        console.log("🏁 Hoàn tất!");
+    } else {
+        console.log("❌ Không tìm thấy job nào.");
     }
 }
 
