@@ -11,6 +11,7 @@ const KEYWORDS = [
     "CFA", "Actuarial", "PhD", "Research", "Trader", "President", "CEO",
     "CIO", "CTO", "CSO", "Chief AI Officer"
 ];
+
 // --- HÀM UPLOAD LITTERBOX (CATBOX) ---
 async function uploadToCatbox(filePath) {
     try {
@@ -26,7 +27,6 @@ async function uploadToCatbox(filePath) {
 
         const fileLink = response.data.trim();
 
-        // SỬA DÒNG NÀY: Chỉ cần kiểm tra xem có bắt đầu bằng https:// không
         if (fileLink.includes('https://')) {
             console.log("✅ Upload thành công! Link chính thức:", fileLink);
             return fileLink;
@@ -45,23 +45,29 @@ async function sendToTeams(totalJobs, fileLink) {
     if (!webhookUrl) return;
 
     const adaptiveCard = {
-        "type": "AdaptiveCard",
-        "version": "1.4",
-        "body": [
-            { "type": "TextBlock", "text": "🚀 CẬP NHẬT JOB MỚI TẠI VANCOUVER", "weight": "Bolder", "size": "Medium", "color": "Accent" },
-            {
-                "type": "FactSet",
-                "facts": [
-                    { "title": "Nguồn:", "value": "Indeed Canada" },
-                    { "title": "Số lượng:", "value": `${totalJobs} jobs` },
-                    { "title": "Trạng thái:", "value": "Đã sẵn sàng ✅" }
-                ]
+        "type": "message",
+        "attachments": [{
+            "contentType": "application/vnd.microsoft.card.adaptive",
+            "content": {
+                "type": "AdaptiveCard",
+                "version": "1.4",
+                "body": [
+                    { "type": "TextBlock", "text": "🚀 CẬP NHẬT JOB MỚI TẠI VANCOUVER", "weight": "Bolder", "size": "Medium", "color": "Accent" },
+                    {
+                        "type": "FactSet",
+                        "facts": [
+                            { "title": "Nguồn:", "value": "Indeed Canada" },
+                            { "title": "Số lượng:", "value": `${totalJobs} jobs` },
+                            { "title": "Trạng thái:", "value": "Đã sẵn sàng ✅" }
+                        ]
+                    }
+                ],
+                "actions": [
+                    { "type": "Action.OpenUrl", "title": "📥 TẢI FILE EXCEL VỀ MÁY", "url": fileLink }
+                ],
+                "$schema": "http://adaptivecards.io/schemas/adaptive-card.json"
             }
-        ],
-        "actions": [
-            { "type": "Action.OpenUrl", "title": "📥 TẢI FILE EXCEL VỀ MÁY", "url": fileLink }
-        ],
-        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json"
+        }]
     };
 
     try {
@@ -104,6 +110,7 @@ async function runScraper() {
     let allJobs = [];
 
     for (const kw of KEYWORDS) {
+        // Lọc lương $60k+ ngay trên URL của Indeed để kết quả chất lượng hơn
         const targetUrl = `https://ca.indeed.com/jobs?q=${encodeURIComponent(kw + ' $60,000')}&l=Vancouver%2C+BC&radius=25&fromage=3`;
         let attempts = 0;
         const maxAttempts = 3;
@@ -116,7 +123,8 @@ async function runScraper() {
                     params: {
                         api_key: process.env.SCRAPER_API_KEY,
                         url: targetUrl,
-                        country_code: 'ca'
+                        country_code: 'ca',
+                        render: 'true' // Phải có để lấy được Salary và vượt chống bot
                     },
                     timeout: 60000
                 });
@@ -129,27 +137,22 @@ async function runScraper() {
                     const title = titleEl.text().trim();
                     const relativeLink = titleEl.find('a').attr('href') || titleEl.attr('href');
                     
-                    // 1. Lấy Salary (Cập nhật selector để không bị N/A)
-                    const salary = $(el).find('.salary-section, .estimated-salary, .attribute_snippet, .metadata.salary-snippet-container').text().trim() || "N/A";
-                    
-                    // 2. Lấy Location
-                    const location = $(el).find('[data-testid="text-location"], .companyLocation').text().trim() || "Vancouver, BC";
-                    
-                    // 3. Lấy Apply Method
-                    const isQuickApply = $(el).find('.iaIcon').length > 0;
-                    const applyMethod = isQuickApply ? "Indeed Quick Apply" : "Company Website";
-
                     if (title) {
+                        const salary = $(el).find('.salary-section, .estimated-salary, .attribute_snippet, [class*="salary"]').text().trim() || "N/A";
+                        const location = $(el).find('[data-testid="text-location"], .companyLocation, .location').text().trim() || "Vancouver, BC";
+                        const isQuickApply = $(el).find('.iaIcon, .jobsearch-IndeedApplyButton').length > 0;
+                        const applyMethod = isQuickApply ? "Indeed Quick Apply" : "Company Website";
+
                         allJobs.push({
                             Title: title,
-                            Company: $(el).find('[data-testid="company-name"]').text().trim() || "N/A",
+                            Company: $(el).find('[data-testid="company-name"], .companyName').text().trim() || "N/A",
                             Salary: salary,
                             Location: location,
                             'Apply Method': applyMethod,
                             Link: relativeLink ? `https://ca.indeed.com${relativeLink}` : 'N/A',
                             Keyword: kw
                         });
-                        count++; // THÊM DUY NHẤT DÒNG NÀY để logic break; hoạt động đúng
+                        count++;
                     }
                 }); 
 
@@ -174,7 +177,6 @@ async function runScraper() {
         console.log("📤 Bắt đầu gửi báo cáo...");
         const fileLink = await uploadToCatbox(fileName);
 
-        // Giữ nguyên 100% lệnh gọi MS Teams và Telegram như bản gốc của bạn
         await Promise.all([
             sendTelegramAlert(`✅ Tìm thấy ${allJobs.length} jobs mới!`),
             sendTelegramFile(fileName),
@@ -185,3 +187,5 @@ async function runScraper() {
         console.log("❌ Không tìm thấy job nào.");
     }
 }
+
+runScraper();
