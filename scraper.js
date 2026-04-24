@@ -6,21 +6,12 @@ import FormData from 'form-data';
 import { createRequire } from 'module';
 import { google } from 'googleapis';
 
-const totalCount = allJobs.length;
 const require = createRequire(import.meta.url);
-const nodemailer = require('nodemailer');
-const driveLink = await uploadToDriveAndGetLink('Indeed_Jobs.xlsx');
-const payload = {
-    "total": totalCount,      // Đổi thành totalCount (đã định nghĩa ở trên)
-    "downloadUrl": driveLink
-};
-await axios.post(process.env.TEAMS_WEBHOOK_URL, payload);
-
 const KEYWORDS = ["Analyst", "CFA", "CEO", "Data Science", "FP&A"];
 
+// --- HÀM UPLOAD GOOGLE DRIVE ---
 async function uploadToDriveAndGetLink(fileName) {
     try {
-        // 1. Khởi tạo quyền từ Secret
         const credentials = JSON.parse(process.env.GDRIVE_SERVICE_ACCOUNT_JSON);
         const auth = new google.auth.JWT(
             credentials.client_email,
@@ -28,10 +19,8 @@ async function uploadToDriveAndGetLink(fileName) {
             credentials.private_key,
             ['https://www.googleapis.com/auth/drive.file']
         );
-
         const drive = google.drive({ version: 'v3', auth });
 
-        // 2. Upload file
         const fileMetadata = { 'name': fileName };
         const media = {
             mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -44,7 +33,6 @@ async function uploadToDriveAndGetLink(fileName) {
             fields: 'id, webViewLink',
         });
 
-        // 3. Công khai link để ai cũng tải được
         await drive.permissions.create({
             fileId: file.data.id,
             requestBody: { role: 'reader', type: 'anyone' },
@@ -54,67 +42,32 @@ async function uploadToDriveAndGetLink(fileName) {
         return file.data.webViewLink;
     } catch (error) {
         console.error("❌ Lỗi Drive:", error.message);
-        return "https://github.com/NguyenNgocMinhThien/AutoRun/"; // Link dự phòng
+        return "https://github.com/NguyenNgocMinhThien/AutoRun/"; 
     }
 }
-async function sendToTeams(jobCounts) {
+
+// --- HÀM GỬI TEAMS (DÙNG BIẾN ĐỘNG) ---
+async function sendToTeams(totalCount, driveLink) {
     const webhookUrl = process.env.TEAMS_WEBHOOK_URL;
-    
-    if (!webhookUrl) {
-        console.error("❌ Thiếu TEAMS_WEBHOOK_URL!");
-        return;
-    }
+    if (!webhookUrl) return;
 
-    const totalJobs = Object.values(jobCounts).reduce((a, b) => a + b, 0);
-
-    // Gửi thẳng JSON của Adaptive Card - KHÔNG bọc thêm gì bên ngoài
-    const adaptiveCard = {
-        "type": "AdaptiveCard",
-        "version": "1.4",
-        "body": [
-            {
-                "type": "TextBlock",
-                "text": "🚀 CẬP NHẬT JOB MỚI TẠI VANCOUVER",
-                "weight": "Bolder",
-                "size": "Medium"
-            },
-            {
-                "type": "FactSet",
-                "facts": [
-                    { "title": "Nguồn:", "value": "Indeed Canada" },
-                    { "title": "Số lượng:", "value": `${totalJobs} jobs` },
-                    { "title": "Trạng thái:", "value": "Tải về trực tiếp ✅" }
-                ]
-            },
-            {
-                "type": "TextBlock",
-                "text": "Nguyễn Ngọc Minh Thiện used a Workflow template to send this card.",
-                "isSubtle": true,
-                "size": "Small",
-                "wrap": true
-            }
-        ],
-        "actions": [
-            {
-                "type": "Action.OpenUrl",
-                "title": "📥 TẢI FILE EXCEL VỀ MÁY",
-                "url": "https://github.com/NguyenNgocMinhThien/AutoRun/"
-            }
-        ],
-        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json"
+    // Payload này phải khớp với Schema bạn dán trong Power Automate
+    const payload = {
+        "total": totalCount,
+        "downloadUrl": driveLink
     };
 
     try {
-        // Gửi POST request với header JSON chuẩn
         await axios.post(webhookUrl, payload, {
             headers: { 'Content-Type': 'application/json' }
         });
-        console.log("✅ [Teams] Đã gửi Card thành công!");
+        console.log("✅ [Teams] Đã gửi Card qua Power Automate!");
     } catch (error) {
         console.error("❌ [Teams] Lỗi gửi:", error.response?.data || error.message);
     }
 }
-// --- CÁC HÀM PHỤ TRỢ ---
+
+// --- CÁC HÀM PHỤ TRỢ KHÁC ---
 async function sendTelegramAlert(message) {
     const botToken = process.env.TELEGRAM_TOKEN;
     const chatId = process.env.TELEGRAM_CHAT_ID;
@@ -140,7 +93,7 @@ async function sendTelegramFile(filePath) {
     } catch (e) { console.error("❌ Telegram File Error:", e.message); }
 }
 
-// --- HÀM CHẠY CHÍNH ---
+// --- HÀM CHẠY CHÍNH (GIỮ NGUYÊN LOGIC CỦA BẠN) ---
 async function runScraper() {
     console.log("🚀 Khởi động Scraper siêu bền bỉ...");
     let allJobs = [];
@@ -156,22 +109,18 @@ async function runScraper() {
             try {
                 attempts++;
                 console.log(`🔍 Đang quét: ${kw} (Lần thử ${attempts}/${maxAttempts})...`);
-
                 const response = await axios.get('http://api.scraperapi.com', {
                     params: {
                         api_key: process.env.SCRAPER_API_KEY,
                         url: targetUrl,
-                        // Bỏ proxy_type: 'residential' nếu bạn dùng gói miễn phí (gói Free thường bị lỗi 500 khi bật cái này)
-                        // proxy_type: 'residential', 
                         render: 'false',
                         country_code: 'ca'
                     },
-                    timeout: 60000 // Tăng timeout lên 60s để chờ server phản hồi
+                    timeout: 60000
                 });
 
                 const $ = cheerio.load(response.data);
                 let count = 0;
-
                 $('.job_seen_beacon, .resultContent, [class*="jobsearch-SerpJobCard"]').each((i, el) => {
                     const title = $(el).find('h2.jobTitle, a.jcs-JobTitle').text().trim();
                     if (title) {
@@ -199,11 +148,16 @@ async function runScraper() {
         XLSX.utils.book_append_sheet(workbook, worksheet, "Jobs");
         XLSX.writeFile(workbook, fileName);
 
-        console.log("📤 Đang gửi dữ liệu báo cáo qua Webhook Teams...");
+        console.log("📤 Đang xử lý upload và gửi báo cáo...");
+        
+        // BƯỚC QUAN TRỌNG: Upload Drive trước để lấy link
+        const driveLink = await uploadToDriveAndGetLink(fileName);
+        
+        // Gửi tất cả báo cáo
         await Promise.all([
             sendTelegramAlert(`✅ Đã quét xong! Tìm thấy ${allJobs.length} jobs.`),
             sendTelegramFile(fileName),
-            sendToTeams(jobCounts) // PHẢI LÀ HÀM NÀY ĐỂ NỔ POPUP TEAMS
+            sendToTeams(allJobs.length, driveLink) // Gửi link Drive và số lượng thật sang Teams
         ]);
         console.log("🏁 Hoàn tất tất cả báo cáo.");
     }
