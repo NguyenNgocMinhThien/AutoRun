@@ -4,14 +4,61 @@ import * as cheerio from 'cheerio';
 import fs from 'fs';
 import FormData from 'form-data';
 import { createRequire } from 'module';
+import { google } from 'googleapis';
+import fs from 'fs';
 
 const require = createRequire(import.meta.url);
 const nodemailer = require('nodemailer');
+const driveLink = await uploadToDriveAndGetLink('Indeed_Jobs.xlsx');
+const payload = {
+    "total": totalJobs,
+    "downloadUrl": driveLink
+};
+await axios.post(process.env.TEAMS_WEBHOOK_URL, payload);
 
 const KEYWORDS = ["Analyst", "CFA", "CEO", "Data Science", "FP&A"];
 
+async function uploadToDriveAndGetLink(fileName) {
+    try {
+        // 1. Khởi tạo quyền từ Secret
+        const credentials = JSON.parse(process.env.GDRIVE_SERVICE_ACCOUNT_JSON);
+        const auth = new google.auth.JWT(
+            credentials.client_email,
+            null,
+            credentials.private_key,
+            ['https://www.googleapis.com/auth/drive.file']
+        );
+
+        const drive = google.drive({ version: 'v3', auth });
+
+        // 2. Upload file
+        const fileMetadata = { 'name': fileName };
+        const media = {
+            mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            body: fs.createReadStream(fileName),
+        };
+
+        const file = await drive.files.create({
+            resource: fileMetadata,
+            media: media,
+            fields: 'id, webViewLink',
+        });
+
+        // 3. Công khai link để ai cũng tải được
+        await drive.permissions.create({
+            fileId: file.data.id,
+            requestBody: { role: 'reader', type: 'anyone' },
+        });
+
+        console.log("✅ File đã lên Drive:", file.data.webViewLink);
+        return file.data.webViewLink;
+    } catch (error) {
+        console.error("❌ Lỗi Drive:", error.message);
+        return "https://github.com/NguyenNgocMinhThien/AutoRun/"; // Link dự phòng
+    }
+}
 async function sendToTeams(jobCounts) {
-    const webhookUrl = 'https://default623b73c907ff40a09b5f9530629ae2.dc.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/8294d7a86b51436e9d56a48e189dda26/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=8jmphJcxDNiWyP_-s3MMCws3Dvu6-GKayXPMBdCpzqk';
+    const webhookUrl = process.env.TEAMS_WEBHOOK_URL;
     
     if (!webhookUrl) {
         console.error("❌ Thiếu TEAMS_WEBHOOK_URL!");
@@ -51,7 +98,7 @@ async function sendToTeams(jobCounts) {
             {
                 "type": "Action.OpenUrl",
                 "title": "📥 TẢI FILE EXCEL VỀ MÁY",
-                "url": "https://github.com/thiennnm22/AutoRun/actions"
+                "url": "https://github.com/NguyenNgocMinhThien/AutoRun/"
             }
         ],
         "$schema": "http://adaptivecards.io/schemas/adaptive-card.json"
