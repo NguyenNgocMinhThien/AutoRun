@@ -10,9 +10,9 @@ const require = createRequire(import.meta.url);
 const KEYWORDS = ["Analyst", "CFA", "CEO", "Data Science", "FP&A"];
 
 // --- HÀM UPLOAD GOOGLE DRIVE ---
-// --- 1. SỬA HÀM UPLOAD DRIVE (XÓA BỎ ID THƯ MỤC VÍ DỤ) ---
 async function uploadToDriveAndGetLink(fileName) {
     try {
+        console.log("📤 Đang ghi file thẳng vào thư mục Google Drive...");
         const credentials = JSON.parse(process.env.GDRIVE_SERVICE_ACCOUNT_JSON);
         const auth = new google.auth.GoogleAuth({
             credentials,
@@ -20,12 +20,12 @@ async function uploadToDriveAndGetLink(fileName) {
         });
         const drive = google.drive({ version: 'v3', auth });
 
-        // Sử dụng ID thư mục Thiện đã cung cấp
+        // Đây là thư mục "job scraper" của Thiện
         const folderId = '1EUAo7fNuhagyh3J41DM-shaMP0MaU-F2';
 
         const fileMetadata = { 
             'name': fileName,
-            'parents': [folderId] // Dòng này giúp dùng dung lượng của bạn, không dùng của Service Account
+            'parents': [folderId] // Quyết định thành bại ở dòng này
         };
         
         const media = {
@@ -39,17 +39,17 @@ async function uploadToDriveAndGetLink(fileName) {
             fields: 'id, webViewLink',
         });
 
-        // Chia sẻ quyền để ai cũng xem được file khi nhấn nút
+        // Đảm bảo ai có link cũng xem được (để nút bấm trên Teams hoạt động)
         await drive.permissions.create({
             fileId: file.data.id,
             requestBody: { role: 'reader', type: 'anyone' },
         });
 
-        console.log("✅ Drive thành công! File ID:", file.data.id);
+        console.log("✅ Đã đưa file vào thư mục thành công!");
         return file.data.webViewLink;
     } catch (error) {
         console.error("❌ Lỗi Drive:", error.message);
-        // Nếu vẫn lỗi, trả về link folder để bạn vẫn có file mà dùng
+        // Trả về link thư mục gốc của Thiện nếu có sự cố
         return "https://drive.google.com/drive/folders/1EUAo7fNuhagyh3J41DM-shaMP0MaU-F2"; 
     }
 }
@@ -58,41 +58,30 @@ async function sendToTeams(totalJobs, driveLink) {
     const webhookUrl = process.env.TEAMS_WEBHOOK_URL;
     if (!webhookUrl) return;
 
-    // Cấu trúc Card đầy đủ để gửi thẳng, tránh bị trắng thẻ
+    // Payload chuẩn gửi trực tiếp qua Power Automate
     const adaptiveCard = {
         "type": "AdaptiveCard",
         "version": "1.4",
         "body": [
-            {
-                "type": "TextBlock",
-                "text": "🚀 CẬP NHẬT JOB MỚI TẠI VANCOUVER",
-                "weight": "Bolder",
-                "size": "Medium",
-                "color": "Accent"
-            },
+            { "type": "TextBlock", "text": "🚀 CẬP NHẬT JOB MỚI TẠI VANCOUVER", "weight": "Bolder", "size": "Medium", "color": "Accent" },
             {
                 "type": "FactSet",
                 "facts": [
                     { "title": "Nguồn:", "value": "Indeed Canada" },
                     { "title": "Số lượng:", "value": `${totalJobs} jobs` },
-                    { "title": "Trạng thái:", "value": "Đã sẵn sàng ✅" }
+                    { "title": "Trạng thái:", "value": "Đã lưu vào Drive ✅" }
                 ]
             }
         ],
         "actions": [
-            {
-                "type": "Action.OpenUrl",
-                "title": "📥 TẢI FILE EXCEL VỀ MÁY",
-                "url": driveLink
-            }
+            { "type": "Action.OpenUrl", "title": "📥 TẢI FILE EXCEL VỀ MÁY", "url": driveLink }
         ],
         "$schema": "http://adaptivecards.io/schemas/adaptive-card.json"
     };
 
     try {
-        // Gửi nguyên cục JSON sang Power Automate
         await axios.post(webhookUrl, adaptiveCard);
-        console.log("✅ [Teams] Đã bắn Card thành công!");
+        console.log("✅ [Teams] Đã gửi thông báo thành công!");
     } catch (error) {
         console.error("❌ [Teams] Lỗi gửi:", error.message);
     }
