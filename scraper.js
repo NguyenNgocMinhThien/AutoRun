@@ -9,29 +9,30 @@ const require = createRequire(import.meta.url);
 const KEYWORDS = ["Analyst", "CFA", "CEO", "Data Science", "FP&A"];
 
 // --- HÀM UPLOAD LITTERBOX (CATBOX) ---
+// --- HÀM UPLOAD LITTERBOX (CATBOX) ---
 async function uploadToCatbox(filePath) {
     try {
         console.log("📤 Đang tải file lên Litterbox...");
         const form = new FormData();
         form.append('reqtype', 'fileupload');
-        form.append('time', '24h'); // File tồn tại trong 24h
+        form.append('time', '24h'); 
         form.append('fileToUpload', fs.createReadStream(filePath));
 
-        const response = await axios.post('https://litter.catbox.moe/resources/internals/api.php', form, {
+        const response = await axios.post('https://litterbox.catbox.moe/resources/internals/api.php', form, {
             headers: form.getHeaders()
         });
 
-        // Catbox trả về text thuần là link, cần trim() để sạch dữ liệu
         const fileLink = response.data.trim();
 
-        if (fileLink.startsWith('https://litter.catbox.moe')) {
-            console.log("✅ Upload thành công! Link:", fileLink);
+        // SỬA DÒNG NÀY: Chỉ cần kiểm tra xem có bắt đầu bằng https:// không
+        if (fileLink.includes('https://')) {
+            console.log("✅ Upload thành công! Link chính thức:", fileLink);
             return fileLink;
         }
-        throw new Error("Phản hồi không chứa link hợp lệ: " + fileLink);
+        
+        throw new Error("Phản hồi không phải link hợp lệ: " + fileLink);
     } catch (error) {
         console.error("❌ Lỗi Catbox:", error.message);
-        // Trả về link GitHub Action làm dự phòng nếu upload lỗi
         return `https://github.com/${process.env.GITHUB_REPOSITORY}/actions`;
     }
 }
