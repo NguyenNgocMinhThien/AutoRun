@@ -96,49 +96,6 @@ async function sendToTeams(totalJobs, driveLink) {
         console.error("❌ [Teams] Lỗi gửi:", error.message);
     }
 }
-// --- 2. SỬA HÀM SEND TO TEAMS (GỬI CARD TRỰC TIẾP) ---
-async function sendToTeams(totalJobs, driveLink) {
-    const webhookUrl = process.env.TEAMS_WEBHOOK_URL;
-    if (!webhookUrl) return;
-
-    // Đây là cấu trúc JSON chuẩn để Power Automate nhận cục "Body" và đẩy thẳng lên Teams
-    const adaptiveCardContent = {
-        "type": "AdaptiveCard",
-        "version": "1.4",
-        "body": [
-            {
-                "type": "TextBlock",
-                "text": "🚀 CẬP NHẬT JOB MỚI TẠI VANCOUVER",
-                "weight": "Bolder",
-                "size": "Medium"
-            },
-            {
-                "type": "FactSet",
-                "facts": [
-                    { "title": "Nguồn:", "value": "Indeed Canada" },
-                    { "title": "Số lượng:", "value": `${totalJobs} jobs` },
-                    { "title": "Trạng thái:", "value": "Tải về trực tiếp ✅" }
-                ]
-            }
-        ],
-        "actions": [
-            {
-                "type": "Action.OpenUrl",
-                "title": "📥 TẢI FILE EXCEL VỀ MÁY",
-                "url": driveLink
-            }
-        ],
-        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json"
-    };
-
-    try {
-        // GỬI THẲNG NỘI DUNG CARD - Power Automate lấy Body dán vào ô Adaptive Card là xong
-        await axios.post(webhookUrl, adaptiveCardContent); 
-        console.log("✅ [Teams] Đã bắn Card sang Power Automate!");
-    } catch (error) {
-        console.error("❌ [Teams] Lỗi gửi:", error.message);
-    }
-}
 
 // --- CÁC HÀM PHỤ TRỢ KHÁC ---
 async function sendTelegramAlert(message) {
