@@ -7,8 +7,8 @@ import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
 const KEYWORDS = [
-    "Analyst", "FP&A", "Investment", "Quantitative Researcher", "Data Science", 
-    "CFA", "Actuarial", "PhD", "Research", "Trader", "President", "CEO", 
+    "Analyst", "FP&A", "Investment", "Quantitative Researcher", "Data Science",
+    "CFA", "Actuarial", "PhD", "Research", "Trader", "President", "CEO",
     "CIO", "CTO", "CSO", "Chief AI Officer"
 ];
 // --- HÀM UPLOAD LITTERBOX (CATBOX) ---
@@ -17,7 +17,7 @@ async function uploadToCatbox(filePath) {
         console.log("📤 Đang tải file lên Litterbox...");
         const form = new FormData();
         form.append('reqtype', 'fileupload');
-        form.append('time', '24h'); 
+        form.append('time', '24h');
         form.append('fileToUpload', fs.createReadStream(filePath));
 
         const response = await axios.post('https://litterbox.catbox.moe/resources/internals/api.php', form, {
@@ -31,7 +31,7 @@ async function uploadToCatbox(filePath) {
             console.log("✅ Upload thành công! Link chính thức:", fileLink);
             return fileLink;
         }
-        
+
         throw new Error("Phản hồi không phải link hợp lệ: " + fileLink);
     } catch (error) {
         console.error("❌ Lỗi Catbox:", error.message);
@@ -122,21 +122,21 @@ async function runScraper() {
                 });
 
                 const $ = cheerio.load(response.data);
-                let count = 0; // Biến này để kiểm tra xem lần này có job không
-                
+                let count = 0;
+
                 $('.job_seen_beacon').each((i, el) => {
                     const titleEl = $(el).find('h2.jobTitle, a.jcs-JobTitle');
                     const title = titleEl.text().trim();
-                    
+
                     if (title) {
                         const relativeLink = titleEl.find('a').attr('href') || titleEl.attr('href');
                         
-                        // 1. Lấy Salary (Thêm các selector dự phòng)
+                        // 1. Lấy Salary (Selector tối ưu)
                         const salary = $(el).find('.salary-section, .estimated-salary, .attribute_snippet, .metadata.salary-snippet-container').text().trim() || "N/A";
-                        
+
                         // 2. Lấy Location
                         const location = $(el).find('[data-testid="text-location"], .companyLocation').text().trim() || "Vancouver, BC";
-                        
+
                         // 3. Lấy Apply Method
                         const isQuickApply = $(el).find('.iaIcon, .jobsearch-IndeedApplyButton').length > 0;
                         const applyMethod = isQuickApply ? "Indeed Quick Apply" : "Company Website";
@@ -150,26 +150,21 @@ async function runScraper() {
                             Link: relativeLink ? `https://ca.indeed.com${relativeLink}` : 'N/A',
                             Keyword: kw
                         });
-                        
-                        count++; // QUAN TRỌNG: Phải tăng count ở đây
+                        count++;
                     }
-                }); 
+                });
 
                 if (count > 0) {
-                    console.log(`✅ Lấy được ${count} jobs cho keyword: ${kw}`);
-                    break; // Thoát vòng lặp while, chuyển sang Keyword tiếp theo
-                } else {
-                    console.log(`hide ⚠️ Không thấy job nào cho ${kw} ở lần thử này.`);
+                    console.log(`✅ Lấy được ${count} jobs cho ${kw}`);
+                    break;
                 }
-
             } catch (err) {
-                console.log(`❌ Lỗi hệ thống khi quét ${kw}: ${err.message}`);
+                console.log(`⚠️ Lỗi ${kw}: ${err.message}`);
                 if (attempts < maxAttempts) await new Promise(r => setTimeout(r, 5000));
             }
         }
     }
 
-    // --- PHẦN XUẤT FILE VÀ GỬI BÁO CÁO (GIỮ NGUYÊN) ---
     if (allJobs.length > 0) {
         const fileName = `Indeed_Jobs.xlsx`;
         const worksheet = XLSX.utils.json_to_sheet(allJobs);
@@ -187,6 +182,6 @@ async function runScraper() {
         ]);
         console.log("🏁 Hoàn tất!");
     } else {
-        console.log("❌ Kết thúc: Không tìm thấy bất kỳ job nào để gửi.");
+        console.log("❌ Không tìm thấy job nào.");
     }
 }
