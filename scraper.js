@@ -6,12 +6,12 @@ import FormData from 'form-data';
 import { createRequire } from 'module';
 import { google } from 'googleapis';
 
-
+const totalCount = allJobs.length;
 const require = createRequire(import.meta.url);
 const nodemailer = require('nodemailer');
 const driveLink = await uploadToDriveAndGetLink('Indeed_Jobs.xlsx');
 const payload = {
-    "total": totalJobs,
+    "total": totalCount,      // Đổi thành totalCount (đã định nghĩa ở trên)
     "downloadUrl": driveLink
 };
 await axios.post(process.env.TEAMS_WEBHOOK_URL, payload);
@@ -106,7 +106,7 @@ async function sendToTeams(jobCounts) {
 
     try {
         // Gửi POST request với header JSON chuẩn
-        await axios.post(webhookUrl, adaptiveCard, {
+        await axios.post(webhookUrl, payload, {
             headers: { 'Content-Type': 'application/json' }
         });
         console.log("✅ [Teams] Đã gửi Card thành công!");
