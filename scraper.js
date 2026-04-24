@@ -20,12 +20,12 @@ async function uploadToDriveAndGetLink(fileName) {
         });
         const drive = google.drive({ version: 'v3', auth });
 
-        // SỬA TẠI ĐÂY: Thêm lại 'parents' với ID thư mục bạn vừa gửi
+        // Phải có 'parents' trỏ về ID thư mục bạn đã share quyền Editor
         const fileMetadata = { 
             'name': fileName,
             'parents': ['1EUAo7fNuhagyh3J41DM-shaMP0MaU-F2'] 
         }; 
-
+        
         const media = {
             mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             body: fs.createReadStream(fileName),
@@ -37,20 +37,20 @@ async function uploadToDriveAndGetLink(fileName) {
             fields: 'id, webViewLink',
         });
 
+        // Cấp quyền xem cho mọi người để nút bấm trên Teams hoạt động
         await drive.permissions.create({
             fileId: file.data.id,
             requestBody: { role: 'reader', type: 'anyone' },
         });
 
-        console.log("✅ File đã lên Drive thành công:", file.data.webViewLink);
+        console.log("✅ File đã lên Drive thành công!");
         return file.data.webViewLink;
     } catch (error) {
-        // Nếu lỗi Quota xuất hiện, nó sẽ nhảy vào đây và trả về link GitHub
         console.error("❌ Lỗi Drive:", error.message);
+        // Trả về link GitHub nếu upload thất bại
         return "https://github.com/NguyenNgocMinhThien/AutoRun/"; 
     }
 }
-
 // --- 2. SỬA HÀM SEND TO TEAMS (GỬI CARD TRỰC TIẾP) ---
 async function sendToTeams(totalJobs, driveLink) {
     const webhookUrl = process.env.TEAMS_WEBHOOK_URL;
