@@ -13,7 +13,6 @@ const KEYWORDS = ["Analyst", "CFA", "CEO", "Data Science", "FP&A"];
 // --- 1. SỬA HÀM UPLOAD DRIVE (XÓA BỎ ID THƯ MỤC VÍ DỤ) ---
 async function uploadToDriveAndGetLink(fileName) {
     try {
-        console.log("📤 Đang tải file lên Google Drive...");
         const credentials = JSON.parse(process.env.GDRIVE_SERVICE_ACCOUNT_JSON);
         const auth = new google.auth.GoogleAuth({
             credentials,
@@ -21,11 +20,13 @@ async function uploadToDriveAndGetLink(fileName) {
         });
         const drive = google.drive({ version: 'v3', auth });
 
-        // ID thư mục Thiện đã gửi: 1EUAo7fNuhagyh3J41DM-shaMP0MaU-F2
+        // Sử dụng ID thư mục Thiện đã cung cấp
+        const folderId = '1EUAo7fNuhagyh3J41DM-shaMP0MaU-F2';
+
         const fileMetadata = { 
             'name': fileName,
-            'parents': ['1EUAo7fNuhagyh3J41DM-shaMP0MaU-F2'] 
-        }; 
+            'parents': [folderId] // Dòng này giúp dùng dung lượng của bạn, không dùng của Service Account
+        };
         
         const media = {
             mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -38,17 +39,17 @@ async function uploadToDriveAndGetLink(fileName) {
             fields: 'id, webViewLink',
         });
 
-        // Lệnh này để nút bấm trên Teams có thể mở được file
+        // Chia sẻ quyền để ai cũng xem được file khi nhấn nút
         await drive.permissions.create({
             fileId: file.data.id,
             requestBody: { role: 'reader', type: 'anyone' },
         });
 
-        console.log("✅ Drive thành công! Link:", file.data.webViewLink);
+        console.log("✅ Drive thành công! File ID:", file.data.id);
         return file.data.webViewLink;
     } catch (error) {
-        console.error("❌ Lỗi Drive triệt để:", error.message);
-        // Trả về link folder nếu không upload được file cụ thể
+        console.error("❌ Lỗi Drive:", error.message);
+        // Nếu vẫn lỗi, trả về link folder để bạn vẫn có file mà dùng
         return "https://drive.google.com/drive/folders/1EUAo7fNuhagyh3J41DM-shaMP0MaU-F2"; 
     }
 }
