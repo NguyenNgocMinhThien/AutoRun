@@ -17,25 +17,34 @@ async function sendToTeams(jobCounts) {
     const totalJobs = Object.values(jobCounts).reduce((a, b) => a + b, 0);
     const details = Object.entries(jobCounts).map(([k, v]) => `${k}: ${v}`).join(", ");
 
-    const adaptiveCard = {
-        "type": "AdaptiveCard",
-        "version": "1.4",
-        "body": [
-            { "type": "TextBlock", "text": "🚀 CẬP NHẬT JOB MỚI TẠI VANCOUVER", "weight": "Bolder", "size": "Medium", "color": "Accent" },
-            { "type": "FactSet", "facts": [
-                { "title": "Nguồn:", "value": "Indeed Canada" },
-                { "name": "Số lượng:", "value": `${totalJobs} jobs` },
-                { "title": "Chi tiết:", "value": details }
-            ]},
-            { "type": "TextBlock", "text": "Trạng thái: Tải về trực tiếp ✅", "isSubtle": true }
-        ],
-        "actions": [
-            { "type": "Action.OpenUrl", "title": "💾 TẢI FILE EXCEL VỀ MÁY", "url": "https://github.com/thiennnm22/AutoRun/actions" }
+    // Cấu trúc BẮT BUỘC để template "Send webhook alerts" không bị Failed
+    const payload = {
+        "type": "message",
+        "attachments": [
+            {
+                "contentType": "application/vnd.microsoft.card.adaptive",
+                "content": {
+                    "type": "AdaptiveCard",
+                    "version": "1.4",
+                    "body": [
+                        { "type": "TextBlock", "text": "🚀 CẬP NHẬT JOB MỚI TẠI VANCOUVER", "weight": "Bolder", "size": "Medium", "color": "Accent" },
+                        { "type": "FactSet", "facts": [
+                            { "title": "Nguồn:", "value": "Indeed Canada" },
+                            { "title": "Số lượng:", "value": `${totalJobs} jobs` },
+                            { "title": "Chi tiết:", "value": details }
+                        ]},
+                        { "type": "TextBlock", "text": "Trạng thái: Tải về trực tiếp ✅", "isSubtle": true }
+                    ],
+                    "actions": [
+                        { "type": "Action.OpenUrl", "title": "💾 TẢI FILE EXCEL VỀ MÁY", "url": "https://github.com/thiennnm22/AutoRun/actions" }
+                    ]
+                }
+            }
         ]
     };
 
     try {
-        await axios.post(webhookUrl, adaptiveCard);
+        await axios.post(webhookUrl, payload);
         console.log("✅ [Teams] Thẻ đã nổ trên Group Chat!");
     } catch (error) {
         console.error("❌ [Teams] Lỗi:", error.message);
