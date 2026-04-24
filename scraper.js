@@ -32,12 +32,13 @@ async function uploadToDriveAndGetLink(fileName) {
 
         console.log("📤 Đang đẩy file vào thư mục Drive...");
         const file = await drive.files.create({
-            resource: fileMetadata,
-            media: media,
-            fields: 'id, webViewLink',
-            // Dòng này rất quan trọng để xác nhận dùng quyền đã được share
-            supportsAllDrives: true 
-        });
+    resource: fileMetadata,
+    media: media,
+    fields: 'id, webViewLink',
+    // THÊM 2 DÒNG NÀY ĐỂ GIẢI QUYẾT QUOTA CỨNG ĐẦU
+    supportsAllDrives: true,
+    keepRevisionForever: false 
+});
 
         // Chia sẻ công khai file lẻ này để nút bấm trên Teams có thể tải về
         await drive.permissions.create({
