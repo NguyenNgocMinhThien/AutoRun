@@ -104,6 +104,7 @@ async function runScraper() {
     let allJobs = [];
 
     for (const kw of KEYWORDS) {
+        // Giữ nguyên cấu trúc URL và logic lọc lương bằng text của bạn
         const targetUrl = `https://ca.indeed.com/jobs?q=${encodeURIComponent(kw + ' $60,000')}&l=Vancouver%2C+BC&radius=25&fromage=3`;
         let attempts = 0;
         const maxAttempts = 3;
@@ -122,21 +123,20 @@ async function runScraper() {
                 });
 
                 const $ = cheerio.load(response.data);
-                let count = 0;
-
+                let count = 0; // Biến này dùng để break vòng lặp while như logic gốc của bạn
+                
                 $('.job_seen_beacon').each((i, el) => {
                     const titleEl = $(el).find('h2.jobTitle, a.jcs-JobTitle');
                     const title = titleEl.text().trim();
-
+                    const relativeLink = titleEl.find('a').attr('href') || titleEl.attr('href');
+                    
                     if (title) {
-                        const relativeLink = titleEl.find('a').attr('href') || titleEl.attr('href');
-                        
-                        // 1. Lấy Salary (Selector tối ưu)
+                        // 1. Lấy Salary: Dùng selector chính xác để tránh N/A
                         const salary = $(el).find('.salary-section, .estimated-salary, .attribute_snippet, .metadata.salary-snippet-container').text().trim() || "N/A";
-
+                        
                         // 2. Lấy Location
                         const location = $(el).find('[data-testid="text-location"], .companyLocation').text().trim() || "Vancouver, BC";
-
+                        
                         // 3. Lấy Apply Method
                         const isQuickApply = $(el).find('.iaIcon, .jobsearch-IndeedApplyButton').length > 0;
                         const applyMethod = isQuickApply ? "Indeed Quick Apply" : "Company Website";
@@ -150,13 +150,15 @@ async function runScraper() {
                             Link: relativeLink ? `https://ca.indeed.com${relativeLink}` : 'N/A',
                             Keyword: kw
                         });
-                        count++;
+                        
+                        count++; // Tăng count để xác nhận có dữ liệu, giúp break vòng lặp while bên dưới
                     }
-                });
+                }); 
 
+                // Giữ nguyên logic break của bạn để tránh quét lại khi đã có kết quả
                 if (count > 0) {
                     console.log(`✅ Lấy được ${count} jobs cho ${kw}`);
-                    break;
+                    break; 
                 }
             } catch (err) {
                 console.log(`⚠️ Lỗi ${kw}: ${err.message}`);
@@ -165,6 +167,7 @@ async function runScraper() {
         }
     }
 
+    // Giữ nguyên logic xuất file và gọi các hàm thông báo MS Teams/Telegram của bạn
     if (allJobs.length > 0) {
         const fileName = `Indeed_Jobs.xlsx`;
         const worksheet = XLSX.utils.json_to_sheet(allJobs);
@@ -175,6 +178,7 @@ async function runScraper() {
         console.log("📤 Bắt đầu gửi báo cáo...");
         const fileLink = await uploadToCatbox(fileName);
 
+        // Gọi lại các hàm thông báo theo đúng thứ tự và cấu trúc bạn đã thiết lập
         await Promise.all([
             sendTelegramAlert(`✅ Tìm thấy ${allJobs.length} jobs mới!`),
             sendTelegramFile(fileName),
