@@ -12,7 +12,6 @@ const KEYWORDS = ["Analyst", "CFA", "CEO", "Data Science", "FP&A"];
 // --- HÀM UPLOAD GOOGLE DRIVE ---
 async function uploadToDriveAndGetLink(fileName) {
     try {
-        console.log("📤 Đang ghi file thẳng vào thư mục Google Drive...");
         const credentials = JSON.parse(process.env.GDRIVE_SERVICE_ACCOUNT_JSON);
         const auth = new google.auth.GoogleAuth({
             credentials,
@@ -20,12 +19,12 @@ async function uploadToDriveAndGetLink(fileName) {
         });
         const drive = google.drive({ version: 'v3', auth });
 
-        // Đây là thư mục "job scraper" của Thiện
+        // ID thư mục "job scraper" của Thiện
         const folderId = '1EUAo7fNuhagyh3J41DM-shaMP0MaU-F2';
 
         const fileMetadata = { 
             'name': fileName,
-            'parents': [folderId] // Quyết định thành bại ở dòng này
+            'parents': [folderId] // BẮT BUỘC có dòng này để tránh lỗi Quota
         };
         
         const media = {
@@ -33,24 +32,25 @@ async function uploadToDriveAndGetLink(fileName) {
             body: fs.createReadStream(fileName),
         };
 
+        console.log("📤 Đang đẩy file vào thư mục Drive...");
         const file = await drive.files.create({
             resource: fileMetadata,
             media: media,
             fields: 'id, webViewLink',
         });
 
-        // Đảm bảo ai có link cũng xem được (để nút bấm trên Teams hoạt động)
+        // Cấp quyền Reader để nút trên Teams có thể mở file
         await drive.permissions.create({
             fileId: file.data.id,
             requestBody: { role: 'reader', type: 'anyone' },
         });
 
-        console.log("✅ Đã đưa file vào thư mục thành công!");
+        console.log("✅ Thành công! File ID:", file.data.id);
         return file.data.webViewLink;
     } catch (error) {
         console.error("❌ Lỗi Drive:", error.message);
-        // Trả về link thư mục gốc của Thiện nếu có sự cố
-        return "https://drive.google.com/drive/folders/1EUAo7fNuhagyh3J41DM-shaMP0MaU-F2"; 
+        // Trả về link folder dự phòng
+        return `https://drive.google.com/drive/folders/1EUAo7fNuhagyh3J41DM-shaMP0MaU-F2`;
     }
 }
 
