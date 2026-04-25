@@ -8,68 +8,58 @@ import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const KEYWORDS = ["Analyst", "CFA", "CEO", "Data Science", "FP&A"];
 
-// --- HÀM HỖ TRỢ LỌC LƯƠNG (GIỮ NGUYÊN) ---
+// --- HÀM LỌC LƯƠNG (GIỮ NGUYÊN LOGIC) ---
 function isSalaryHighEnough(salaryText) {
     if (!salaryText || salaryText === "N/A") return true; 
     const numbers = salaryText.replace(/,/g, '').match(/\d+(\.\d+)?/g);
     if (!numbers) return true;
-
     const val = parseFloat(numbers[0]);
     if (salaryText.toLowerCase().includes('hour')) return val >= 30;
     if (salaryText.toLowerCase().includes('year')) return val >= 60000;
-    if (val >= 60000) return true;
-    if (val >= 30 && val < 1000) return true;
-    
-    return false;
+    return val >= 60000 || (val >= 30 && val < 1000);
 }
 
-// --- HÀM UPLOAD (GIỮ NGUYÊN) ---
+// --- SỬA LỖI UPLOAD 405 (THÊM USER-AGENT) ---
 async function uploadToCatbox(filePath) {
     try {
         const form = new FormData();
         form.append('reqtype', 'fileupload');
         form.append('time', '24h'); 
         form.append('fileToUpload', fs.createReadStream(filePath));
+
         const response = await axios.post('https://litterbox.catbox.moe/resources/internals/api.php', form, {
-            headers: form.getHeaders()
+            headers: {
+                ...form.getHeaders(),
+                'User-Agent': 'Mozilla/5.0' // Cần thiết để tránh lỗi 405
+            }
         });
+
         const fileLink = response.data.trim();
-        if (fileLink.includes('https://')) return fileLink;
-        throw new Error("Invalid link: " + fileLink);
+        return fileLink.includes('https://') ? fileLink : `https://github.com/${process.env.GITHUB_REPOSITORY}/actions`;
     } catch (error) {
-        console.error("❌ Lỗi Catbox:", error.message);
+        console.error("❌ Lỗi Catbox (405):", error.message);
         return `https://github.com/${process.env.GITHUB_REPOSITORY}/actions`;
     }
 }
 
-// --- HÀM GỬI TEAMS (GIỮ NGUYÊN) ---
+// --- GỬI TEAMS & TELEGRAM (GIỮ NGUYÊN) ---
 async function sendToTeams(totalJobs, fileLink) {
     const webhookUrl = process.env.TEAMS_WEBHOOK_URL;
     if (!webhookUrl) return;
     const adaptiveCard = {
-        "type": "message",
-        "attachments": [{
+        "type": "message", "attachments": [{
             "contentType": "application/vnd.microsoft.card.adaptive",
             "content": {
-                "type": "AdaptiveCard",
-                "version": "1.4",
-                "body": [
-                    { "type": "TextBlock", "text": "🚀 CẬP NHẬT JOB MỚI TẠI VANCOUVER", "weight": "Bolder", "size": "Medium", "color": "Accent" },
-                    { "type": "FactSet", "facts": [
-                        { "title": "Nguồn:", "value": "Indeed Canada" },
-                        { "title": "Số lượng:", "value": `${totalJobs} jobs` },
-                        { "title": "Trạng thái:", "value": "Đã lọc lương ✅" }
-                    ]}
-                ],
-                "actions": [{ "type": "Action.OpenUrl", "title": "📥 TẢI FILE EXCEL VỀ MÁY", "url": fileLink }],
+                "type": "AdaptiveCard", "version": "1.4",
+                "body": [{ "type": "TextBlock", "text": "🚀 CẬP NHẬT JOB MỚI", "weight": "Bolder" }],
+                "actions": [{ "type": "Action.OpenUrl", "title": "📥 TẢI EXCEL", "url": fileLink }],
                 "$schema": "http://adaptivecards.io/schemas/adaptive-card.json"
             }
         }]
     };
-    try { await axios.post(webhookUrl, adaptiveCard); } catch (e) { console.error("❌ Lỗi Teams"); }
+    try { await axios.post(webhookUrl, adaptiveCard); } catch (e) {}
 }
 
-// --- TELEGRAM (GIỮ NGUYÊN) ---
 async function sendTelegramAlert(message) {
     const botToken = process.env.TELEGRAM_TOKEN;
     const chatId = process.env.TELEGRAM_CHAT_ID;
@@ -80,14 +70,14 @@ async function sendTelegramAlert(message) {
 async function sendTelegramFile(filePath) {
     const botToken = process.env.TELEGRAM_TOKEN;
     const chatId = process.env.TELEGRAM_CHAT_ID;
-    if (!botToken || !chatId || !fs.existsSync(filePath)) return;
+    if (!botToken || !chatId) return;
     const form = new FormData();
     form.append('chat_id', chatId);
     form.append('document', fs.createReadStream(filePath));
     try { await axios.post(`https://api.telegram.org/bot${botToken}/sendDocument`, form, { headers: form.getHeaders() }); } catch (e) {}
 }
 
-// --- HÀM CHẠY CHÍNH (SỬA SELECTOR ĐỂ LẤY LƯƠNG) ---
+// --- HÀM CHẠY CHÍNH (THAY ĐỔI SELECTOR ĐỂ HIỆN LƯƠNG) ---
 async function runScraper() {
     console.log("🚀 Khởi động Scraper...");
     let allJobs = [];
@@ -95,9 +85,8 @@ async function runScraper() {
     for (const kw of KEYWORDS) {
         const targetUrl = `https://ca.indeed.com/jobs?q=${encodeURIComponent(kw + ' $60,000')}&l=Vancouver%2C+BC&radius=25&fromage=3`;
         let attempts = 0;
-        const maxAttempts = 3;
 
-        while (attempts < maxAttempts) {
+        while (attempts < 3) {
             try {
                 attempts++;
                 console.log(`🔍 Quét: ${kw} (Lần ${attempts})...`);
@@ -106,8 +95,8 @@ async function runScraper() {
                         api_key: process.env.SCRAPER_API_KEY,
                         url: targetUrl,
                         country_code: 'ca',
-                        render: 'true', 
-                        premium: 'true' // Sử dụng premium để bypass Indeed tốt hơn
+                        render: 'true',
+                        premium: 'true' // Sử dụng premium để bypass Indeed
                     },
                     timeout: 60000
                 });
@@ -118,34 +107,30 @@ async function runScraper() {
                 $('.job_seen_beacon').each((i, el) => {
                     const titleEl = $(el).find('h2.jobTitle, a.jcs-JobTitle');
                     const title = titleEl.text().trim();
-                    const relativeLink = titleEl.find('a').attr('href') || titleEl.attr('href');
                     
-                    // --- ĐÂY LÀ PHẦN THAY ĐỔI ĐỂ LẤY LƯƠNG CHÍNH XÁC ---
-                    const salary = $(el).find('.salaryOnly, .salary-section, .estimated-salary, [class*="salary"]').text().trim() || "N/A";
+                    // --- SELECTOR MỚI ĐỂ TRÁNH N/A ---
+                    // Indeed hiện tại bọc lương trong các class metadata hoặc attribute_snippet
+                    const salary = $(el).find('[data-testid="attribute_snippet_testid"], .salary-section, .metadata.salary-snippet-container').text().trim() || "N/A";
                     const location = $(el).find('[data-testid="text-location"], .companyLocation').text().trim() || "Vancouver, BC";
-                    const applyMethod = $(el).find('.iaIcon').length > 0 ? "Indeed Quick Apply" : "Company Website";
-
+                    
                     if (title && isSalaryHighEnough(salary)) {
                         allJobs.push({
                             Title: title,
                             Company: $(el).find('[data-testid="company-name"]').text().trim() || "N/A",
                             Salary: salary,
                             Location: location,
-                            'Apply Method': applyMethod,
-                            Link: relativeLink ? `https://ca.indeed.com${relativeLink}` : 'N/A',
+                            'Apply Method': $(el).find('.iaIcon').length > 0 ? "Indeed Quick Apply" : "Company Website",
+                            Link: titleEl.find('a').attr('href') ? `https://ca.indeed.com${titleEl.find('a').attr('href')}` : 'N/A',
                             Keyword: kw
                         });
                         count++;
                     }
                 });
 
-                if (count > 0) {
-                    console.log(`✅ Lấy được ${count} jobs cho ${kw}`);
-                    break; 
-                }
+                if (count > 0) break; 
             } catch (err) {
                 console.log(`⚠️ Lỗi ${kw}: ${err.message}`);
-                if (attempts < maxAttempts) await new Promise(r => setTimeout(r, 5000));
+                await new Promise(r => setTimeout(r, 5000));
             }
         }
     }
@@ -157,18 +142,14 @@ async function runScraper() {
         XLSX.utils.book_append_sheet(workbook, worksheet, "Jobs");
         XLSX.writeFile(workbook, fileName);
 
-        console.log("📤 Bắt đầu gửi báo cáo...");
         const fileLink = await uploadToCatbox(fileName);
-
         await Promise.all([
-            sendTelegramAlert(`✅ Tìm thấy ${allJobs.length} jobs mới có lương phù hợp!`),
+            sendTelegramAlert(`✅ Đã tìm thấy ${allJobs.length} jobs!`),
             sendTelegramFile(fileName),
             sendToTeams(allJobs.length, fileLink)
         ]);
-        console.log("🏁 Hoàn tất!");
-    } else {
-        console.log("❌ Không tìm thấy job nào phù hợp điều kiện.");
     }
+    console.log("🏁 Hoàn tất!");
 }
 
 runScraper();
