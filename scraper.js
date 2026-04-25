@@ -128,9 +128,8 @@ async function runScraper() {
                 // 3. Lấy Apply Method (Xác định qua loại link hoặc nhãn)
                 const isQuickApply = $(el).find('.iaIcon').length > 0;
                 const applyMethod = isQuickApply ? "Indeed Quick Apply" : "Company Website";
-
-                if (title) {
-                    allJobs.push({
+                    if (title) {
+                        allJobs.push({
                         Title: title,
                         Company: $(el).find('[data-testid="company-name"]').text().trim() || "N/A",
                         Salary: salary,
@@ -138,12 +137,18 @@ async function runScraper() {
                         'Apply Method': applyMethod,
                         Link: relativeLink ? `https://ca.indeed.com${relativeLink}` : 'N/A',
                         Keyword: kw
-                    });
+                        });
+                    }
+                });
+
+                if (count > 0) {
+                    console.log(`✅ Lấy được ${count} jobs cho ${kw}`);
+                    break; 
                 }
-            });
-            console.log(`✅ Lấy xong ${kw}`);
-        } catch (err) {
-            console.log(`⚠️ Lỗi quét ${kw}: ${err.message}`);
+            } catch (err) {
+                console.log(`⚠️ Lỗi ${kw}: ${err.message}`);
+                if (attempts < maxAttempts) await new Promise(r => setTimeout(r, 5000));
+            }
         }
     }
 
