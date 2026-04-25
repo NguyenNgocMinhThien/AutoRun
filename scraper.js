@@ -78,72 +78,68 @@ async function sendTelegramFile(filePath) {
 
 // --- HÀM CHẠY CHÍNH (THAY ĐỔI SELECTOR ĐỂ HIỆN LƯƠNG) ---
 async function runScraper() {
-    console.log("🚀 Đang dùng kỹ thuật bóc tách JSON để sửa lỗi N/A...");
+    console.log("🚀 Bắt đầu quét dữ liệu Indeed...");
     let allJobs = [];
 
     for (const kw of KEYWORDS) {
-        // Thêm tham số &vjk để Indeed nhả dữ liệu sạch hơn
-        const targetUrl = `https://ca.indeed.com/jobs?q=${encodeURIComponent(kw)}&l=Vancouver,+BC&fromage=3`;
+        // Sử dụng URL có sẵn mức lọc 60k của Indeed để tăng độ chính xác
+        const targetUrl = `https://ca.indeed.com/jobs?q=${encodeURIComponent(kw + ' $60,000')}&l=Vancouver,+BC&fromage=3`;
         
         try {
-            console.log(`🔍 Đang quét: ${kw}`);
+            console.log(`🔍 Đang lấy tin cho ngành: ${kw}`);
             const response = await axios.get('http://api.scraperapi.com', {
                 params: {
                     api_key: process.env.SCRAPER_API_KEY,
                     url: targetUrl,
-                    render: 'true',
                     country_code: 'ca',
-                    // Sử dụng gói cao cấp để tránh lỗi 500
-                    premium: 'true',
-                    session_number: Math.floor(Math.random() * 100)
-                },
-                timeout: 60000
+                    // Chỉ dùng render đơn giản để tránh lỗi 500
+                    render: 'true'
+                }
             });
 
             const $ = cheerio.load(response.data);
             
-            // KỸ THUẬT MỚI: Quét các thẻ metadata ẩn nơi Indeed giấu lương
             $('.job_seen_beacon').each((i, el) => {
                 const title = $(el).find('h2.jobTitle').text().trim();
                 
-                // Thử nhiều tầng Selector để không bị N/A
-                let salary = $(el).find('.salary-snippet-container').text().trim() || 
-                             $(el).find('.metadata.salary-snippet-container').text().trim() ||
-                             $(el).find('[data-testid="attribute_snippet_testid"]').first().text().trim() ||
-                             "N/A";
-
-                const company = $(el).find('[data-testid="company-name"]').text().trim();
+                // --- SỬA LỖI N/A TẠI ĐÂY ---
+                // Sử dụng bộ selector bao quát các class mới nhất của Indeed
+                const salary = $(el).find('.salary-snippet-container, .metadata.salary-snippet-container, [data-testid="attribute_snippet_testid"]').text().trim() || "N/A";
+                const company = $(el).find('[data-testid="company-name"]').text().trim() || "N/A";
                 const location = $(el).find('[data-testid="text-location"]').text().trim() || "Vancouver, BC";
 
                 if (title && isSalaryHighEnough(salary)) {
                     allJobs.push({
-                        Title: title,
-                        Company: company,
-                        Salary: salary,
-                        Location: location,
-                        Link: "https://ca.indeed.com" + ($(el).find('a').attr('href') || ""),
-                        Keyword: kw
+                        'Ngành Tuyển': kw, // Gắn ngành vào cột đầu tiên cho dễ nhìn
+                        'Title': title,
+                        'Company': company,
+                        'Salary': salary,
+                        'Location': location,
+                        'Link': "https://ca.indeed.com" + ($(el).find('a').attr('href') || "")
                     });
                 }
             });
-
-            console.log(`✅ Đã lấy được ${allJobs.length} jobs.`);
         } catch (err) {
-            // Log lỗi chi tiết để debug
-            console.log(`⚠️ Lỗi tại ${kw}: ${err.response?.status || err.message}`);
+            console.log(`⚠️ Ngành ${kw} bị lỗi (Status: ${err.response?.status || 'Timeout'})`);
         }
     }
 
-    // --- XUẤT FILE (FIX LỖI FILE TRỐNG) ---
     if (allJobs.length > 0) {
-        const fileName = `Indeed_Jobs_Fixed.xlsx`;
+        // Sắp xếp lại danh sách theo Ngành trước khi xuất Excel
+        allJobs.sort((a, b) => a['Ngành Tuyển'].localeCompare(b['Ngành Tuyển']));
+
+        const fileName = `Indeed_Vancouver_Report.xlsx`;
         const worksheet = XLSX.utils.json_to_sheet(allJobs);
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, "Jobs");
+        
+        // Căn chỉnh độ rộng cột cơ bản
+        worksheet['!cols'] = [{ wch: 20 }, { wch: 40 }, { wch: 30 }, { wch: 20 }, { wch: 25 }, { wch: 50 }];
+        
         XLSX.writeFile(workbook, fileName);
-        console.log("📂 Đã tạo file Excel thành công.");
+        console.log(`✅ Đã xuất file Excel với ${allJobs.length} công việc.`);
     } else {
-        console.log("❌ Không có dữ liệu để xuất file.");
+        console.log("❌ Không tìm thấy dữ liệu phù hợp.");
     }
 }
 
