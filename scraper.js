@@ -31,7 +31,7 @@ async function uploadToCatbox(filePath) {
             console.log("✅ Link file:", fileLink);
             return fileLink;
         }
-        throw new Error("Phản hồi không hợp lệ: " + fileLink);
+        throw new Error("Phản hồi không chứa link hợp lệ");
     } catch (error) {
         console.error("❌ Lỗi Catbox:", error.message);
         return `https://github.com/${process.env.GITHUB_REPOSITORY}/actions`;
@@ -52,18 +52,12 @@ async function sendToTeams(totalJobs, fileLink) {
                 "version": "1.4",
                 "body": [
                     { "type": "TextBlock", "text": "🚀 CẬP NHẬT JOB MỚI TẠI VANCOUVER", "weight": "Bolder", "size": "Medium", "color": "Accent" },
-                    {
-                        "type": "FactSet",
-                        "facts": [
-                            { "title": "Nguồn:", "value": "Indeed Canada" },
-                            { "title": "Số lượng:", "value": `${totalJobs} jobs` },
-                            { "title": "Khu vực:", "value": "Vancouver & lân cận" }
-                        ]
-                    }
+                    { "type": "FactSet", "facts": [
+                        { "title": "Nguồn:", "value": "Indeed Canada" },
+                        { "title": "Số lượng:", "value": `${totalJobs} jobs` }
+                    ]}
                 ],
-                "actions": [
-                    { "type": "Action.OpenUrl", "title": "📥 TẢI FILE EXCEL", "url": fileLink }
-                ],
+                "actions": [{ "type": "Action.OpenUrl", "title": "📥 TẢI FILE EXCEL", "url": fileLink }],
                 "$schema": "http://adaptivecards.io/schemas/adaptive-card.json"
             }
         }]
@@ -71,10 +65,8 @@ async function sendToTeams(totalJobs, fileLink) {
 
     try {
         await axios.post(webhookUrl, adaptiveCard);
-        console.log("✅ [Teams] Đã gửi thông báo!");
-    } catch (error) {
-        console.error("❌ [Teams] Lỗi gửi:", error.message);
-    }
+        console.log("✅ [Teams] Đã gửi thông báo thành công!");
+    } catch (error) { console.error("❌ [Teams] Lỗi gửi:", error.message); }
 }
 
 // --- TELEGRAM ---
@@ -109,10 +101,9 @@ async function runScraper() {
     let allJobs = [];
 
     for (const kw of KEYWORDS) {
-        // Lọc địa điểm cụ thể theo yêu cầu: Vancouver, Burnaby, North/West Vancouver
         const targetUrl = `https://ca.indeed.com/jobs?q=${encodeURIComponent(kw + ' $60,000')}&l=Vancouver%2C+BC&radius=25&fromage=3`;
         let attempts = 0;
-        const maxAttempts = 2;
+        const maxAttempts = 2; // Giảm xuống 2 lần để chạy nhanh hơn
 
         while (attempts < maxAttempts) {
             try {
@@ -123,39 +114,41 @@ async function runScraper() {
                         api_key: process.env.SCRAPER_API_KEY,
                         url: targetUrl,
                         country_code: 'ca',
-                        render: 'true' // QUAN TRỌNG: Để lấy được lương và location
+                        render: 'true',
+                        wait_for_selector: '.job_seen_beacon' // Chỉ chờ cho đến khi thấy kết quả
                     },
-                    timeout: 60000
+                    timeout: 45000 // Giảm timeout để bỏ qua các request bị treo nhanh hơn
                 });
 
                 const $ = cheerio.load(response.data);
+                let count = 0;
                 
                 $('.job_seen_beacon').each((i, el) => {
                     const titleEl = $(el).find('h2.jobTitle, a.jcs-JobTitle');
                     const title = titleEl.text().trim();
+                    const salary = $(el).find('.salary-section, .estimated-salary, .attribute_snippet, [class*="salary"]').text().trim() || "N/A";
                     
                     if (title) {
-                        // Selector chuẩn cho lương và địa điểm
-                        const salary = $(el).find('.salary-section, .estimated-salary, .attribute_snippet, [class*="salary"]').text().trim() || "N/A";
-                        const location = $(el).find('[data-testid="text-location"], .companyLocation').text().trim() || "Vancouver, BC";
-                        const company = $(el).find('[data-testid="company-name"], .companyName').text().trim() || "N/A";
-                        const relativeLink = titleEl.find('a').attr('href') || titleEl.attr('href');
-
                         allJobs.push({
                             Title: title,
-                            Company: company,
+                            Company: $(el).find('[data-testid="company-name"]').text().trim() || "N/A",
                             Salary: salary,
-                            Location: location,
+                            Location: $(el).find('[data-testid="text-location"], .companyLocation').text().trim() || "Vancouver, BC",
                             'Apply Method': $(el).find('.iaIcon').length > 0 ? "Indeed Quick Apply" : "Company Website",
-                            Link: relativeLink ? `https://ca.indeed.com${relativeLink}` : 'N/A',
+                            Link: `https://ca.indeed.com${titleEl.find('a').attr('href') || titleEl.attr('href')}`,
                             Keyword: kw
                         });
+                        count++;
                     }
-                });
-                break; 
+                }); 
+
+                if (count > 0) {
+                    console.log(`✅ Lấy được ${count} jobs cho ${kw}`);
+                    break; 
+                }
             } catch (err) {
                 console.log(`⚠️ Lỗi ${kw}: ${err.message}`);
-                await new Promise(r => setTimeout(r, 2000));
+                if (attempts < maxAttempts) await new Promise(r => setTimeout(r, 3000));
             }
         }
     }
@@ -167,15 +160,14 @@ async function runScraper() {
         XLSX.utils.book_append_sheet(workbook, worksheet, "Jobs");
         XLSX.writeFile(workbook, fileName);
 
-        console.log("📤 Đang xử lý báo cáo...");
         const fileLink = await uploadToCatbox(fileName);
 
         await Promise.all([
-            sendTelegramAlert(`✅ Đã tìm thấy ${allJobs.length} job mới!`),
+            sendTelegramAlert(`✅ Tìm thấy ${allJobs.length} jobs mới!`),
             sendTelegramFile(fileName),
             sendToTeams(allJobs.length, fileLink)
         ]);
-        console.log("🏁 Hoàn tất!");
+        console.log("🏁 Hoàn tất tất cả báo cáo.");
     } else {
         console.log("❌ Không tìm thấy job nào.");
     }
