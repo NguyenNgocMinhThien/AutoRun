@@ -35,29 +35,31 @@ async function sendToTeams(totalJobs, fileLink) {
     if (!webhookUrl) return;
 
     const adaptiveCard = {
-        "type": "message",
-        "attachments": [{
-            "contentType": "application/vnd.microsoft.card.adaptive",
-            "content": {
-                "type": "AdaptiveCard",
-                "version": "1.4",
-                "body": [
-                    { "type": "TextBlock", "text": "🚀 CẬP NHẬT JOB MỚI TẠI VANCOUVER", "weight": "Bolder", "size": "Medium", "color": "Accent" },
-                    { "type": "FactSet", "facts": [
-                        { "title": "Nguồn:", "value": "Indeed Canada" },
-                        { "title": "Số lượng:", "value": `${totalJobs} jobs` }
-                    ]}
-                ],
-                "actions": [{ "type": "Action.OpenUrl", "title": "📥 TẢI FILE EXCEL", "url": fileLink }],
-                "$schema": "http://adaptivecards.io/schemas/adaptive-card.json"
+        "type": "AdaptiveCard",
+        "version": "1.4",
+        "body": [
+            { "type": "TextBlock", "text": "🚀 CẬP NHẬT JOB MỚI TẠI VANCOUVER", "weight": "Bolder", "size": "Medium", "color": "Accent" },
+            {
+                "type": "FactSet",
+                "facts": [
+                    { "title": "Nguồn:", "value": "Indeed Canada" },
+                    { "title": "Số lượng:", "value": `${totalJobs} jobs` },
+                    { "title": "Trạng thái:", "value": "Đã sẵn sàng ✅" }
+                ]
             }
-        }]
+        ],
+        "actions": [
+            { "type": "Action.OpenUrl", "title": "📥 TẢI FILE EXCEL VỀ MÁY", "url": fileLink }
+        ],
+        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json"
     };
 
     try {
         await axios.post(webhookUrl, adaptiveCard);
-        console.log("✅ [Teams] Đã gửi thông báo thành công!");
-    } catch (error) { console.error("❌ [Teams] Lỗi gửi:", error.message); }
+        console.log("✅ [Teams] Đã gửi Card thành công!");
+    } catch (error) {
+        console.error("❌ [Teams] Lỗi gửi:", error.message);
+    }
 }
 
 // --- TELEGRAM ---
