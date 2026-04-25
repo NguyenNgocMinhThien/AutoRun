@@ -1,61 +1,95 @@
-🚀 Indeed Vancouver Job Scraper (Automated)
-Công cụ tự động quét tin tuyển dụng từ Indeed Canada (khu vực Vancouver) cho các vị trí tài chính và dữ liệu, sau đó gửi báo cáo trực tiếp qua Telegram. Dự án được tối ưu hóa để chạy miễn phí trên GitHub Actions.
+# Indeed Auto Job Scraper (Vancouver)
 
-✨ Tính năng nổi bật
-Quét đa từ khóa: Tự động tìm kiếm các vị trí hot: Analyst, CFA, CEO, Data Science, FP&A.
+Công cụ tự động quét việc làm trên **Indeed Canada** theo từ khóa, tập trung khu vực **Vancouver, BC** và gửi báo cáo qua Telegram + Microsoft Teams.
 
-Vượt rào cản Indeed: Sử dụng ScraperAPI với Residential Proxy giúp tránh bị chặn bởi hệ thống chống bot của Indeed.
+### Tính năng chính
+- Quét job theo nhiều từ khóa (Analyst, CFA, Data Science...)
+- Lọc job có mức lương từ **$60,000/năm** trở lên
+- **Chỉ lấy phần lương sạch sẽ** (ví dụ: `$85,000 - $110,000 a year`)
+- Xuất file Excel với các cột: Title, Company, Salary, Location, Apply Method, Link, Keyword
+- Tự động upload file lên Litterbox (link tải tạm 24h)
+- Gửi thông báo + file qua **Telegram** và **Microsoft Teams**
+- Chạy tự động hàng ngày qua GitHub Actions
 
-Cơ chế Tự động thử lại (Retry): Tự động xử lý các lỗi kết nối hoặc lỗi 500 từ server để đảm bảo không bỏ sót dữ liệu.
+---
 
-Báo cáo tức thì:
+## Cấu trúc thư mục
+indeed-auto-scraper/
+├── scraper.js                 # File chính (đã tối ưu salary)
+├── package.json
+├── package-lock.json
+├── .github/workflows/
+│   └── cron.yml               # GitHub Actions workflow
+├── Indeed_Jobs_*.xlsx         # File Excel được tạo (tự động)
+└── README.md
+text---
 
-Gửi tin nhắn tổng kết số lượng job qua Telegram.
+## Cách sử dụng
 
-Gửi trực tiếp file Excel (.xlsx) đính kèm vào chat Telegram.
+### 1. Clone repository
+```bash
+git clone <your-repo-url>
+cd indeed-auto-scraper
+2. Cài đặt dependencies
+Bashnpm install
+3. Thiết lập biến môi trường (Secrets)
+Bạn cần tạo các GitHub Secrets sau:
+Secret NameMô tảBắt buộcSCRAPER_API_KEYAPI key của ScraperAPICóTELEGRAM_TOKENToken Bot TelegramCóTELEGRAM_CHAT_IDChat ID nhận thông báoCóTEAMS_WEBHOOK_URLWebhook của Microsoft TeamsKhông
+Lưu ý: TEAMS_WEBHOOK_URL là tùy chọn. Nếu không có thì chỉ gửi qua Telegram.
+4. Chạy thủ công (test)
+Bashnode scraper.js
+5. Chạy tự động hàng ngày
+Workflow đã được thiết lập chạy lúc 00:00 UTC mỗi ngày (cron: '0 0 * * *').
+Bạn có thể chạy thủ công bằng cách vào Actions → Daily Job Scraper → Run workflow.
 
-Lưu trữ file trên GitHub Artifacts để tải về bất cứ lúc nào.
+Tùy chỉnh
+Thay đổi từ khóa tìm kiếm
+Mở file scraper.js, sửa mảng KEYWORDS:
+JavaScriptconst KEYWORDS = [
+    "Analyst", 
+    "CFA", 
+    "Data Science", 
+    "FP&A", 
+    "Business Intelligence",
+    "Financial Analyst"
+];
+Thay đổi khu vực / bộ lọc lương
+Hiện tại đang lọc:
 
-🛠 Hướng dẫn thiết lập
-1. Chuẩn bị tài khoản
-ScraperAPI: Đăng ký tài khoản tại ScraperAPI để lấy API Key.
+Khu vực: Vancouver, BC (bán kính 25km)
+Lương tối thiểu: $60,000
 
-Telegram Bot:
+Bạn có thể chỉnh URL trong vòng lặp for:
+JavaScriptconst targetUrl = `https://ca.indeed.com/jobs?q=${encodeURIComponent(kw + ' $60,000')}&l=Vancouver%2C+BC&radius=25&fromage=3`;
 
-Chat với @BotFather để tạo bot và lấy API Token.
+Output Excel
+File Excel sẽ có các cột:
 
-Lấy Chat ID của bạn (dùng bot @userinfobot).
+Title
+Company
+Salary ← Chỉ giữ phần số tiền sạch (không có "Full-time", "Permanent"...)
+Location
+Apply Method
+Link
+Keyword
 
-2. Cấu hình GitHub Secrets
-Vào Repo của bạn > Settings > Secrets and variables > Actions. Thêm 3 biến sau:
 
-SCRAPER_API_KEY: Key từ ScraperAPI.
+Công nghệ sử dụng
 
-TELEGRAM_TOKEN: Token của bot Telegram.
+Node.js + ES Modules
+Cheerio (parse HTML)
+ScraperAPI (bypass anti-bot)
+XLSX (xuất Excel)
+Litterbox (upload file tạm)
+GitHub Actions (chạy tự động)
 
-TELEGRAM_CHAT_ID: ID chat nhận thông báo.
 
-3. Cách thức vận hành
-Chạy tự động: Hệ thống được cài đặt sẵn để chạy vào 07:00 - 08:00 AM (Giờ Việt Nam) hàng ngày.
+Lưu ý quan trọng
 
-Chạy thủ công:
+ScraperAPI có giới hạn request theo gói. Hãy theo dõi usage.
+Indeed thường thay đổi giao diện → có thể cần cập nhật selector sau này.
+File Excel được upload lên Litterbox chỉ tồn tại 24 giờ.
 
-Vào tab Actions trong GitHub.
 
-Chọn workflow Daily Job Scraper.
-
-Nhấn Run workflow.
-
-📂 Cấu trúc dự án
-scraper.js: Luồng xử lý chính (Scraping, Data Processing, Telegram API).
-
-.github/workflows/cron.yml: Cấu hình lịch trình chạy tự động trên Cloud.
-
-README.md: Hướng dẫn sử dụng dự án.
-
-⚠️ Lưu ý kỹ thuật
-Nếu gặp lỗi Status Code 500, hệ thống sẽ tự động chờ và thử lại tối đa 3 lần.
-
-Đảm bảo gói ScraperAPI của bạn còn đủ Credit (mỗi lần quét tốn khoảng 10-25 credits cho chế độ Premium).
-
-Dự án được phát triển nhằm hỗ trợ cộng đồng tìm kiếm việc làm tự động và hiệu quả.
+Hỗ trợ
+Nếu gặp lỗi hoặc muốn thêm tính năng (ví dụ: gửi Gmail, lưu vào Google Drive, thêm cột Posted Date...), hãy tạo Issue hoặc liên hệ.
