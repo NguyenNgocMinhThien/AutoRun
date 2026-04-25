@@ -30,7 +30,7 @@ async function uploadToCatbox(filePath) {
     }
 }
 
-// --- HÀM GỬI TEAMS & TELEGRAM (giữ nguyên) ---
+// --- HÀM GỬI TEAMS ---
 async function sendToTeams(totalJobs, fileLink) {
     const webhookUrl = process.env.TEAMS_WEBHOOK_URL;
     if (!webhookUrl) return;
@@ -63,6 +63,7 @@ async function sendToTeams(totalJobs, fileLink) {
     }
 }
 
+// --- TELEGRAM ---
 async function sendTelegramAlert(message) {
     const botToken = process.env.TELEGRAM_TOKEN;
     const chatId = process.env.TELEGRAM_CHAT_ID;
@@ -123,28 +124,23 @@ async function runScraper() {
 
                     const relativeLink = titleEl.find('a').attr('href') || titleEl.attr('href');
 
-                    // ==================== LẤY SALARY CHỈ PHẦN CÓ SỐ TIỀN ====================
-                    let salary = "N/A";
+                    // ==================== LẤY SALARY - CHỈ PHẦN CÓ SỐ TIỀN ====================
+                    let salary = "";
 
-                    // Ưu tiên 1: data-testid attribute_snippet_testid (ổn định nhất 2026)
-                    let salaryEl = $(el).find('[data-testid="attribute_snippet_testid"]');
+                    // Ưu tiên các selector ổn định nhất
+                    let salaryEl = $(el).find('[data-testid="attribute_snippet_testid"], .salary-snippet-container, .estimated-salary, [class*="salary-snippet"], .salary-section');
+
                     if (salaryEl.length) {
                         salary = salaryEl.text().trim();
-                    } 
-                    // Ưu tiên 2: các class chứa salary
-                    else {
-                        salaryEl = $(el).find('.salary-snippet-container, .estimated-salary, [class*="salary-snippet"], .salary-section');
-                        if (salaryEl.length) {
-                            salary = salaryEl.text().trim();
-                        }
                     }
 
-                    // Dọn sạch và giữ lại phần có số tiền ($ hoặc /hour /year)
+                    // Dọn sạch khoảng trắng thừa
                     salary = salary.replace(/\s+/g, ' ').trim();
 
-                    // Nếu có chứa ký tự $, giữ nguyên; nếu không thì để N/A
-                    if (!salary.includes('$') && !salary.toLowerCase().includes('hour') && !salary.toLowerCase().includes('year')) {
-                        salary = "N/A";
+                    // Chỉ giữ nếu có chứa dấu $ (tức là có số lương)
+                    // Nếu không có $ thì để trống hoàn toàn
+                    if (!salary.includes('$')) {
+                        salary = "";
                     }
                     // =================================================================
 
@@ -160,7 +156,7 @@ async function runScraper() {
                     allJobs.push({
                         Title: title,
                         Company: company,
-                        Salary: salary,
+                        Salary: salary,           // ← giờ chỉ có số lương hoặc để trống
                         Location: location,
                         'Apply Method': applyMethod,
                         Link: relativeLink ? `https://ca.indeed.com${relativeLink}` : 'N/A',
