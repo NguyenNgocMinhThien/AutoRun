@@ -15,11 +15,8 @@ function isSalaryHighEnough(salaryText) {
     if (!numbers) return true;
 
     const val = parseFloat(numbers[0]);
-    // Nếu có chữ "hour" (giờ) -> phải >= 30
     if (salaryText.toLowerCase().includes('hour')) return val >= 30;
-    // Nếu có chữ "year" (năm) -> phải >= 60000
     if (salaryText.toLowerCase().includes('year')) return val >= 60000;
-    // Nếu không rõ đơn vị, dựa vào độ lớn của số
     if (val >= 60000) return true;
     if (val >= 30 && val < 1000) return true;
     
@@ -53,23 +50,24 @@ async function sendToTeams(totalJobs, fileLink) {
     if (!webhookUrl) return;
 
     const adaptiveCard = {
-        "type": "AdaptiveCard",
-        "version": "1.4",
-        "body": [
-            { "type": "TextBlock", "text": "🚀 CẬP NHẬT JOB MỚI TẠI VANCOUVER", "weight": "Bolder", "size": "Medium", "color": "Accent" },
-            {
-                "type": "FactSet",
-                "facts": [
-                    { "title": "Nguồn:", "value": "Indeed Canada" },
-                    { "title": "Số lượng:", "value": `${totalJobs} jobs` },
-                    { "title": "Trạng thái:", "value": "Đã sẵn sàng ✅" }
-                ]
+        "type": "message",
+        "attachments": [{
+            "contentType": "application/vnd.microsoft.card.adaptive",
+            "content": {
+                "type": "AdaptiveCard",
+                "version": "1.4",
+                "body": [
+                    { "type": "TextBlock", "text": "🚀 CẬP NHẬT JOB MỚI TẠI VANCOUVER", "weight": "Bolder", "size": "Medium", "color": "Accent" },
+                    { "type": "FactSet", "facts": [
+                        { "title": "Nguồn:", "value": "Indeed Canada" },
+                        { "title": "Số lượng:", "value": `${totalJobs} jobs` },
+                        { "title": "Trạng thái:", "value": "Đã sẵn sàng ✅" }
+                    ]}
+                ],
+                "actions": [{ "type": "Action.OpenUrl", "title": "📥 TẢI FILE EXCEL VỀ MÁY", "url": fileLink }],
+                "$schema": "http://adaptivecards.io/schemas/adaptive-card.json"
             }
-        ],
-        "actions": [
-            { "type": "Action.OpenUrl", "title": "📥 TẢI FILE EXCEL VỀ MÁY", "url": fileLink }
-        ],
-        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json"
+        }]
     };
 
     try {
@@ -112,6 +110,7 @@ async function runScraper() {
     let allJobs = [];
 
     for (const kw of KEYWORDS) {
+        // Đúng yêu cầu lọc lương 60k từ URL gốc
         const targetUrl = `https://ca.indeed.com/jobs?q=${encodeURIComponent(kw + ' $60,000')}&l=Vancouver%2C+BC&radius=25&fromage=3`;
         let attempts = 0;
         const maxAttempts = 3;
@@ -124,7 +123,9 @@ async function runScraper() {
                     params: {
                         api_key: process.env.SCRAPER_API_KEY,
                         url: targetUrl,
-                        country_code: 'ca'
+                        country_code: 'ca',
+                        render: 'true', // QUAN TRỌNG: Bật render để hiện tiền lương
+                        wait_for_selector: '.job_seen_beacon' // Chờ trang tải xong các thẻ job
                     },
                     timeout: 60000
                 });
@@ -136,12 +137,13 @@ async function runScraper() {
                     const titleEl = $(el).find('h2.jobTitle, a.jcs-JobTitle');
                     const title = titleEl.text().trim();
                     const relativeLink = titleEl.find('a').attr('href') || titleEl.attr('href');
-                    const salary = $(el).find('.salary-section, .estimated-salary, .attribute_snippet').text().trim() || "N/A";
+                    
+                    // Cập nhật selector lấy lương chuẩn của Indeed để không bị N/A
+                    const salary = $(el).find('.salary-section, .estimated-salary, .attribute_snippet, [class*="salary"]').text().trim() || "N/A";
                     const location = $(el).find('[data-testid="text-location"], .companyLocation').text().trim() || "Vancouver, BC";
                     const isQuickApply = $(el).find('.iaIcon').length > 0;
                     const applyMethod = isQuickApply ? "Indeed Quick Apply" : "Company Website";
 
-                    // CHỈ SỬA ĐÚNG DÒNG NÀY ĐỂ LỌC LƯƠNG THEO YÊU CẦU
                     if (title && isSalaryHighEnough(salary)) {
                         allJobs.push({
                             Title: title,
@@ -178,13 +180,13 @@ async function runScraper() {
         const fileLink = await uploadToCatbox(fileName);
 
         await Promise.all([
-            sendTelegramAlert(`✅ Tìm thấy ${allJobs.length} jobs mới!`),
+            sendTelegramAlert(`✅ Tìm thấy ${allJobs.length} jobs mới có lương phù hợp!`),
             sendTelegramFile(fileName),
             sendToTeams(allJobs.length, fileLink)
         ]);
         console.log("🏁 Hoàn tất!");
     } else {
-        console.log("❌ Không tìm thấy job nào.");
+        console.log("❌ Không tìm thấy job nào phù hợp điều kiện.");
     }
 }
 
