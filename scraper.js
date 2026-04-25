@@ -123,8 +123,7 @@ async function runScraper() {
                     params: {
                         api_key: process.env.SCRAPER_API_KEY,
                         url: targetUrl,
-                        country_code: 'ca',
-                        render: 'true' // Phải có để lấy được Salary và vượt chống bot
+                        country_code: 'ca'
                     },
                     timeout: 60000
                 });
@@ -132,29 +131,18 @@ async function runScraper() {
                 const $ = cheerio.load(response.data);
                 let count = 0;
                 
-                $('.job_seen_beacon').each((i, el) => {
+                $('.job_seen_beacon, .resultContent').each((i, el) => {
                     const titleEl = $(el).find('h2.jobTitle, a.jcs-JobTitle');
                     const title = titleEl.text().trim();
                     const relativeLink = titleEl.find('a').attr('href') || titleEl.attr('href');
-                    
-                    if (title) {
-                        const salary = $(el).find('.salary-section, .estimated-salary, .attribute_snippet, [class*="salary"]').text().trim() || "N/A";
-                        const location = $(el).find('[data-testid="text-location"], .companyLocation, .location').text().trim() || "Vancouver, BC";
-                        const isQuickApply = $(el).find('.iaIcon, .jobsearch-IndeedApplyButton').length > 0;
-                        const applyMethod = isQuickApply ? "Indeed Quick Apply" : "Company Website";
+                    const fullLink = relativeLink ? `https://ca.indeed.com${relativeLink}` : 'N/A';
+                    const company = $(el).find('[data-testid="company-name"], .companyName').text().trim();
 
-                        allJobs.push({
-                            Title: title,
-                            Company: $(el).find('[data-testid="company-name"], .companyName').text().trim() || "N/A",
-                            Salary: salary,
-                            Location: location,
-                            'Apply Method': applyMethod,
-                            Link: relativeLink ? `https://ca.indeed.com${relativeLink}` : 'N/A',
-                            Keyword: kw
-                        });
+                    if (title) {
+                        allJobs.push({ Title: title, Company: company || "N/A", Link: fullLink, Keyword: kw });
                         count++;
                     }
-                }); 
+                });
 
                 if (count > 0) {
                     console.log(`✅ Lấy được ${count} jobs cho ${kw}`);
