@@ -9,7 +9,7 @@ const require = createRequire(import.meta.url);
 
 const KEYWORDS = ["Analyst", "CFA", "CEO", "Data Science", "FP&A"];
 
-// --- HÀM UPLOAD LITTERBOX ---
+// --- HÀM UPLOAD LITTERBOX, TEAMS, TELEGRAM giữ nguyên như cũ ---
 async function uploadToCatbox(filePath) {
     try {
         const form = new FormData();
@@ -30,7 +30,6 @@ async function uploadToCatbox(filePath) {
     }
 }
 
-// --- HÀM GỬI TEAMS ---
 async function sendToTeams(totalJobs, fileLink) {
     const webhookUrl = process.env.TEAMS_WEBHOOK_URL;
     if (!webhookUrl) return;
@@ -63,7 +62,6 @@ async function sendToTeams(totalJobs, fileLink) {
     }
 }
 
-// --- TELEGRAM ---
 async function sendTelegramAlert(message) {
     const botToken = process.env.TELEGRAM_TOKEN;
     const chatId = process.env.TELEGRAM_CHAT_ID;
@@ -124,22 +122,31 @@ async function runScraper() {
 
                     const relativeLink = titleEl.find('a').attr('href') || titleEl.attr('href');
 
-                    // ==================== LẤY SALARY - CHỈ PHẦN CÓ SỐ TIỀN ====================
+                    // ==================== LẤY SALARY - CHỈ GIỮ PHẦN SỐ TIỀN ====================
                     let salary = "";
 
-                    // Ưu tiên các selector ổn định nhất
                     let salaryEl = $(el).find('[data-testid="attribute_snippet_testid"], .salary-snippet-container, .estimated-salary, [class*="salary-snippet"], .salary-section');
 
                     if (salaryEl.length) {
                         salary = salaryEl.text().trim();
                     }
 
-                    // Dọn sạch khoảng trắng thừa
                     salary = salary.replace(/\s+/g, ' ').trim();
 
-                    // Chỉ giữ nếu có chứa dấu $ (tức là có số lương)
-                    // Nếu không có $ thì để trống hoàn toàn
-                    if (!salary.includes('$')) {
+                    // Chỉ giữ nếu có dấu $
+                    if (salary.includes('$')) {
+                        // Loại bỏ các từ thừa: Full-time, Permanent, +1, Mon, Ove, etc.
+                        salary = salary
+                            .replace(/Full-time/gi, '')
+                            .replace(/Permanent/gi, '')
+                            .replace(/Full-time/gi, '')   // phòng trường hợp lặp
+                            .replace(/\+1/gi, '')
+                            .replace(/Mon/gi, '')
+                            .replace(/Ove/gi, '')
+                            .replace(/\s*-\s*Permanent/gi, '')
+                            .replace(/\s*-\s*Full-time/gi, '')
+                            .trim();
+                    } else {
                         salary = "";
                     }
                     // =================================================================
@@ -156,7 +163,7 @@ async function runScraper() {
                     allJobs.push({
                         Title: title,
                         Company: company,
-                        Salary: salary,           // ← giờ chỉ có số lương hoặc để trống
+                        Salary: salary,        // ← sạch sẽ chỉ còn số lương
                         Location: location,
                         'Apply Method': applyMethod,
                         Link: relativeLink ? `https://ca.indeed.com${relativeLink}` : 'N/A',
@@ -167,7 +174,6 @@ async function runScraper() {
                 });
 
                 console.log(`✅ Lấy được ${count} jobs cho từ khóa "${kw}"`);
-
                 if (count > 0) break;
 
             } catch (err) {
