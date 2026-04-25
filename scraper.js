@@ -30,7 +30,7 @@ async function uploadToCatbox(filePath) {
     }
 }
 
-// --- HÀM GỬI TEAMS ---
+// --- HÀM GỬI TEAMS & TELEGRAM (giữ nguyên) ---
 async function sendToTeams(totalJobs, fileLink) {
     const webhookUrl = process.env.TEAMS_WEBHOOK_URL;
     if (!webhookUrl) return;
@@ -63,7 +63,6 @@ async function sendToTeams(totalJobs, fileLink) {
     }
 }
 
-// --- TELEGRAM ---
 async function sendTelegramAlert(message) {
     const botToken = process.env.TELEGRAM_TOKEN;
     const chatId = process.env.TELEGRAM_CHAT_ID;
@@ -120,19 +119,19 @@ async function runScraper() {
                     const titleEl = $(el).find('h2.jobTitle, a.jcs-JobTitle');
                     const title = titleEl.text().trim();
 
-                    if (!title) return; // bỏ qua job không có title
+                    if (!title) return;
 
                     const relativeLink = titleEl.find('a').attr('href') || titleEl.attr('href');
 
-                    // ==================== LẤY SALARY (ĐÃ CẢI TIẾN) ====================
+                    // ==================== LẤY SALARY CHỈ PHẦN CÓ SỐ TIỀN ====================
                     let salary = "N/A";
 
-                    // Ưu tiên 1: data-testid ổn định nhất
+                    // Ưu tiên 1: data-testid attribute_snippet_testid (ổn định nhất 2026)
                     let salaryEl = $(el).find('[data-testid="attribute_snippet_testid"]');
                     if (salaryEl.length) {
                         salary = salaryEl.text().trim();
                     } 
-                    // Ưu tiên 2: các class liên quan đến salary snippet
+                    // Ưu tiên 2: các class chứa salary
                     else {
                         salaryEl = $(el).find('.salary-snippet-container, .estimated-salary, [class*="salary-snippet"], .salary-section');
                         if (salaryEl.length) {
@@ -140,19 +139,21 @@ async function runScraper() {
                         }
                     }
 
-                    // Dọn dẹp text (loại bỏ khoảng trắng thừa)
-                    salary = salary.replace(/\s+/g, ' ').trim() || "N/A";
+                    // Dọn sạch và giữ lại phần có số tiền ($ hoặc /hour /year)
+                    salary = salary.replace(/\s+/g, ' ').trim();
+
+                    // Nếu có chứa ký tự $, giữ nguyên; nếu không thì để N/A
+                    if (!salary.includes('$') && !salary.toLowerCase().includes('hour') && !salary.toLowerCase().includes('year')) {
+                        salary = "N/A";
+                    }
                     // =================================================================
 
-                    // Location
                     const location = $(el).find('[data-testid="text-location"]').text().trim() ||
                                      $(el).find('.companyLocation').text().trim() ||
                                      "Vancouver, BC";
 
-                    // Company
                     const company = $(el).find('[data-testid="company-name"]').text().trim() || "N/A";
 
-                    // Apply Method
                     const isQuickApply = $(el).find('.iaIcon').length > 0;
                     const applyMethod = isQuickApply ? "Indeed Quick Apply" : "Company Website";
 
@@ -171,28 +172,24 @@ async function runScraper() {
 
                 console.log(`✅ Lấy được ${count} jobs cho từ khóa "${kw}"`);
 
-                if (count > 0) {
-                    break; // thành công thì thoát vòng lặp retry
-                }
+                if (count > 0) break;
 
             } catch (err) {
                 console.log(`⚠️ Lỗi ${kw} (lần ${attempts}): ${err.message}`);
-                if (attempts < maxAttempts) {
-                    await new Promise(r => setTimeout(r, 5000));
-                }
+                if (attempts < maxAttempts) await new Promise(r => setTimeout(r, 5000));
             }
         }
     }
 
     if (allJobs.length > 0) {
-        const fileName = `Indeed_Jobs_${new Date().toISOString().slice(0,10)}.xlsx`; // thêm ngày để dễ quản lý
+        const fileName = `Indeed_Jobs_${new Date().toISOString().slice(0,10)}.xlsx`;
 
         const worksheet = XLSX.utils.json_to_sheet(allJobs);
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, "Jobs");
         XLSX.writeFile(workbook, fileName);
 
-        console.log(`📊 Đã lưu ${allJobs.length} jobs vào file ${fileName}`);
+        console.log(`📊 Đã lưu ${allJobs.length} jobs vào ${fileName}`);
 
         const fileLink = await uploadToCatbox(fileName);
 
