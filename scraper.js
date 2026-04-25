@@ -8,6 +8,24 @@ import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const KEYWORDS = ["Analyst", "CFA", "CEO", "Data Science", "FP&A"];
 
+// --- HÀM HỖ TRỢ LỌC LƯƠNG (GIỮ ĐÚNG TIÊU CHUẨN 60K/NĂM HOẶC 30/GIỜ) ---
+function isSalaryHighEnough(salaryText) {
+    if (!salaryText || salaryText === "N/A") return true; 
+    const numbers = salaryText.replace(/,/g, '').match(/\d+(\.\d+)?/g);
+    if (!numbers) return true;
+
+    const val = parseFloat(numbers[0]);
+    // Nếu có chữ "hour" (giờ) -> phải >= 30
+    if (salaryText.toLowerCase().includes('hour')) return val >= 30;
+    // Nếu có chữ "year" (năm) -> phải >= 60000
+    if (salaryText.toLowerCase().includes('year')) return val >= 60000;
+    // Nếu không rõ đơn vị, dựa vào độ lớn của số
+    if (val >= 60000) return true;
+    if (val >= 30 && val < 1000) return true;
+    
+    return false;
+}
+
 // --- HÀM UPLOAD LITTERBOX ---
 async function uploadToCatbox(filePath) {
     try {
@@ -115,29 +133,26 @@ async function runScraper() {
                 let count = 0;
                 
                 $('.job_seen_beacon').each((i, el) => {
-                const titleEl = $(el).find('h2.jobTitle, a.jcs-JobTitle');
-                const title = titleEl.text().trim();
-                const relativeLink = titleEl.find('a').attr('href') || titleEl.attr('href');
-                
-                // 1. Lấy Salary (nếu có)
-                const salary = $(el).find('.salary-section, .estimated-salary, .attribute_snippet').text().trim() || "N/A";
-                
-                // 2. Lấy Location
-                const location = $(el).find('[data-testid="text-location"], .companyLocation').text().trim() || "Vancouver, BC";
-                
-                // 3. Lấy Apply Method (Xác định qua loại link hoặc nhãn)
-                const isQuickApply = $(el).find('.iaIcon').length > 0;
-                const applyMethod = isQuickApply ? "Indeed Quick Apply" : "Company Website";
-                    if (title) {
+                    const titleEl = $(el).find('h2.jobTitle, a.jcs-JobTitle');
+                    const title = titleEl.text().trim();
+                    const relativeLink = titleEl.find('a').attr('href') || titleEl.attr('href');
+                    const salary = $(el).find('.salary-section, .estimated-salary, .attribute_snippet').text().trim() || "N/A";
+                    const location = $(el).find('[data-testid="text-location"], .companyLocation').text().trim() || "Vancouver, BC";
+                    const isQuickApply = $(el).find('.iaIcon').length > 0;
+                    const applyMethod = isQuickApply ? "Indeed Quick Apply" : "Company Website";
+
+                    // CHỈ SỬA ĐÚNG DÒNG NÀY ĐỂ LỌC LƯƠNG THEO YÊU CẦU
+                    if (title && isSalaryHighEnough(salary)) {
                         allJobs.push({
-                        Title: title,
-                        Company: $(el).find('[data-testid="company-name"]').text().trim() || "N/A",
-                        Salary: salary,
-                        Location: location,
-                        'Apply Method': applyMethod,
-                        Link: relativeLink ? `https://ca.indeed.com${relativeLink}` : 'N/A',
-                        Keyword: kw
+                            Title: title,
+                            Company: $(el).find('[data-testid="company-name"]').text().trim() || "N/A",
+                            Salary: salary,
+                            Location: location,
+                            'Apply Method': applyMethod,
+                            Link: relativeLink ? `https://ca.indeed.com${relativeLink}` : 'N/A',
+                            Keyword: kw
                         });
+                        count++;
                     }
                 });
 
