@@ -9,12 +9,7 @@ const require = createRequire(import.meta.url);
 
 const KEYWORDS = ["Analyst", "CFA", "CEO", "Data Science", "FP&A"];
 
-// ====================== HÀM HỖ TRỢ ======================
-async function delay(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-// --- HÀM UPLOAD LITTERBOX ---
+// --- HÀM UPLOAD LITTERBOX, TEAMS, TELEGRAM giữ nguyên như cũ ---
 async function uploadToCatbox(filePath) {
     try {
         const form = new FormData();
@@ -31,16 +26,33 @@ async function uploadToCatbox(filePath) {
         throw new Error("Invalid link: " + fileLink);
     } catch (error) {
         console.error("❌ Lỗi Catbox:", error.message);
-        return `https://github.com/${process.env.GITHUB_REPOSITORY || 'your-repo'}/actions`;
+        return `https://github.com/${process.env.GITHUB_REPOSITORY}/actions`;
     }
 }
 
-// --- HÀM GỬI TEAMS & TELEGRAM (giữ nguyên) ---
 async function sendToTeams(totalJobs, fileLink) {
     const webhookUrl = process.env.TEAMS_WEBHOOK_URL;
     if (!webhookUrl) return;
 
-    const adaptiveCard = { /* ... giữ nguyên như cũ ... */ };
+    const adaptiveCard = {
+        "type": "AdaptiveCard",
+        "version": "1.4",
+        "body": [
+            { "type": "TextBlock", "text": "🚀 CẬP NHẬT JOB MỚI TẠI VANCOUVER", "weight": "Bolder", "size": "Medium", "color": "Accent" },
+            {
+                "type": "FactSet",
+                "facts": [
+                    { "title": "Nguồn:", "value": "Indeed Canada" },
+                    { "title": "Số lượng:", "value": `${totalJobs} jobs` },
+                    { "title": "Trạng thái:", "value": "Đã sẵn sàng ✅" }
+                ]
+            }
+        ],
+        "actions": [
+            { "type": "Action.OpenUrl", "title": "📥 TẢI FILE EXCEL VỀ MÁY", "url": fileLink }
+        ],
+        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json"
+    };
 
     try {
         await axios.post(webhookUrl, adaptiveCard);
@@ -75,7 +87,7 @@ async function sendTelegramFile(filePath) {
     } catch (e) { console.error("❌ Telegram File Error:", e.message); }
 }
 
-// --- HÀM CHẠY CHÍNH (ĐÃ NÂNG CẤP) ---
+// --- HÀM CHẠY CHÍNH ---
 async function runScraper() {
     console.log("🚀 Khởi động Scraper...");
     let allJobs = [];
@@ -83,22 +95,20 @@ async function runScraper() {
     for (const kw of KEYWORDS) {
         const targetUrl = `https://ca.indeed.com/jobs?q=${encodeURIComponent(kw + ' $60,000')}&l=Vancouver%2C+BC&radius=25&fromage=3`;
         let attempts = 0;
-        const maxAttempts = 4;   // tăng lên 4 lần
+        const maxAttempts = 3;
 
         while (attempts < maxAttempts) {
-            attempts++;
-            console.log(`🔍 Quét: ${kw} (Lần ${attempts})...`);
-
             try {
+                attempts++;
+                console.log(`🔍 Quét: ${kw} (Lần ${attempts})...`);
+
                 const response = await axios.get('http://api.scraperapi.com', {
                     params: {
                         api_key: process.env.SCRAPER_API_KEY,
                         url: targetUrl,
-                        country_code: 'ca',
-                        render: 'true',           // ← RẤT QUAN TRỌNG cho Indeed
-                        // premium: 'true'        // thử nếu bạn có gói premium
+                        country_code: 'ca'
                     },
-                    timeout: 90000,               // 90 giây
+                    timeout: 60000
                 });
 
                 const $ = cheerio.load(response.data);
@@ -107,12 +117,14 @@ async function runScraper() {
                 $('.job_seen_beacon').each((i, el) => {
                     const titleEl = $(el).find('h2.jobTitle, a.jcs-JobTitle');
                     const title = titleEl.text().trim();
+
                     if (!title) return;
 
                     const relativeLink = titleEl.find('a').attr('href') || titleEl.attr('href');
 
-                    // Salary cleaning (giữ nguyên logic sạch của bạn)
+                    // ==================== LẤY SALARY - CHỈ GIỮ PHẦN SỐ TIỀN ====================
                     let salary = "";
+
                     let salaryEl = $(el).find('[data-testid="attribute_snippet_testid"], .salary-snippet-container, .estimated-salary, [class*="salary-snippet"], .salary-section');
 
                     if (salaryEl.length) {
@@ -121,10 +133,13 @@ async function runScraper() {
 
                     salary = salary.replace(/\s+/g, ' ').trim();
 
+                    // Chỉ giữ nếu có dấu $
                     if (salary.includes('$')) {
+                        // Loại bỏ các từ thừa: Full-time, Permanent, +1, Mon, Ove, etc.
                         salary = salary
                             .replace(/Full-time/gi, '')
                             .replace(/Permanent/gi, '')
+                            .replace(/Full-time/gi, '')   // phòng trường hợp lặp
                             .replace(/\+1/gi, '')
                             .replace(/Mon/gi, '')
                             .replace(/Ove/gi, '')
@@ -134,6 +149,7 @@ async function runScraper() {
                     } else {
                         salary = "";
                     }
+                    // =================================================================
 
                     const location = $(el).find('[data-testid="text-location"]').text().trim() ||
                                      $(el).find('.companyLocation').text().trim() ||
@@ -147,7 +163,7 @@ async function runScraper() {
                     allJobs.push({
                         Title: title,
                         Company: company,
-                        Salary: salary,
+                        Salary: salary,        // ← sạch sẽ chỉ còn số lương
                         Location: location,
                         'Apply Method': applyMethod,
                         Link: relativeLink ? `https://ca.indeed.com${relativeLink}` : 'N/A',
@@ -162,17 +178,11 @@ async function runScraper() {
 
             } catch (err) {
                 console.log(`⚠️ Lỗi ${kw} (lần ${attempts}): ${err.message}`);
-
-                if (attempts < maxAttempts) {
-                    const waitTime = 5000 * attempts; // exponential backoff: 5s, 10s, 15s...
-                    console.log(`⏳ Chờ ${waitTime/1000} giây trước khi thử lại...`);
-                    await delay(waitTime);
-                }
+                if (attempts < maxAttempts) await new Promise(r => setTimeout(r, 5000));
             }
         }
     }
 
-    // Phần lưu file, upload và gửi thông báo giữ nguyên như cũ
     if (allJobs.length > 0) {
         const fileName = `Indeed_Jobs_${new Date().toISOString().slice(0,10)}.xlsx`;
 
