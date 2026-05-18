@@ -15,9 +15,10 @@ async function getScraperApiKeys() {
     try {
         console.log("📥 Đang tải danh sách API Keys từ Google Sheet...");
         const response = await axios.get(sheetCsvUrl);
-        const rows = response.data.split('\n');
         
-        // Lọc lấy các API Key (bỏ qua dòng tiêu đề, loại bỏ khoảng trắng)
+        // SỬA LỖI 401: Thay thế \r\n thành \n để bẻ dòng chuẩn xác, xóa bỏ ký tự xuống dòng ẩn
+        const rows = response.data.replace(/\r/g, '').split('\n');
+        
         const keys = rows.map(row => row.trim()).filter(row => row.length > 0 && !row.includes("Key")); 
         
         console.log(`✅ Đã tìm thấy ${keys.length} API Keys trong hệ thống.`);
@@ -110,9 +111,9 @@ async function sendTelegramFile(filePath) {
 async function runScraper() {
     console.log("🚀 Khởi động Scraper...");
     
-    // Bước 1: Lấy danh sách toàn bộ Key từ file Google Sheet về trước
     const apiKeys = await getScraperApiKeys();
     let currentKeyIndex = 0;
+    let consecutiveErrors = 0; // Đếm số lần lỗi liên tiếp của các Key
     
     let allJobs = [];
 
@@ -122,21 +123,28 @@ async function runScraper() {
         const maxAttempts = 3;
 
         while (attempts < maxAttempts) {
+            // Nếu duyệt qua tất cả key trong Sheet mà không cái nào chạy được thì dừng tránh vòng lặp vô tận
+            if (consecutiveErrors >= apiKeys.length) {
+                console.log("❌ Toàn bộ API Keys trong Google Sheet đều lỗi hoặc hết credit!");
+                break;
+            }
+
             try {
                 attempts++;
-                console.log(`🔍 Quét: ${kw} (Lần ${attempts})...`);
-                
-                // Trích xuất Key hiện tại từ mảng danh sách Google Sheet
                 const activeKey = apiKeys[currentKeyIndex % apiKeys.length];
+                console.log(`🔍 Quét: ${kw} (Lần thử từ khóa: ${attempts}/3) - Sử dụng Key vị trí số [${(currentKeyIndex % apiKeys.length) + 1}]...`);
 
                 const response = await axios.get('http://api.scraperapi.com', {
                     params: {
-                        api_key: activeKey, // <-- Thay đổi thành Key động lấy từ Sheets
+                        api_key: activeKey,
                         url: targetUrl,
                         country_code: 'ca'
                     },
                     timeout: 60000
                 });
+
+                // Nếu chạy thành công tới đây, reset bộ đếm lỗi liên tiếp
+                consecutiveErrors = 0;
 
                 const $ = cheerio.load(response.data);
                 let count = 0;
@@ -164,7 +172,6 @@ async function runScraper() {
                         salary = salary
                             .replace(/Full-time/gi, '')
                             .replace(/Permanent/gi, '')
-                            .replace(/Full-time/gi, '')   
                             .replace(/\+1/gi, '')
                             .replace(/Mon/gi, '')
                             .replace(/Ove/gi, '')
@@ -202,17 +209,21 @@ async function runScraper() {
                 if (count > 0) break;
 
             } catch (err) {
-                console.log(`⚠️ Lỗi ${kw} (lần ${attempts}): ${err.message}`);
+                console.log(`⚠️ Lỗi ${kw} với Key vị trí [${(currentKeyIndex % apiKeys.length) + 1}]: ${err.message}`);
                 
-                // NẾU LỖI (Hết credit 403, lỗi 403 hoặc 500), tự động nhảy sang Key tiếp theo trong Sheets
-                if (apiKeys.length > 1) {
-                    currentKeyIndex++;
-                    console.log(`🔄 Phát hiện lỗi / hết credit. Tự động chuyển sang sử dụng API Key tiếp theo (Vị trí: ${currentKeyIndex + 1})...`);
-                }
+                // CƠ CHẾ BẠN CẦN: Đổi sang key tiếp theo NGAY LẬP TỨC
+                currentKeyIndex++;
+                consecutiveErrors++;
+                console.log(`🔄 Key lỗi/Hết credit. Đổi sang Key tiếp theo ở vị trí [${(currentKeyIndex % apiKeys.length) + 1}]...`);
+
+                // Vì Key lỗi nên lượt thử của từ khóa này không được tính, hạ bộ đếm attempts xuống để nó chạy lại với Key mới luôn
+                attempts--; 
                 
-                if (attempts < maxAttempts) await new Promise(r => setTimeout(r, 5000));
+                await new Promise(r => setTimeout(r, 2000));
             }
         }
+        
+        if (consecutiveErrors >= apiKeys.length) break;
     }
 
     if (allJobs.length > 0) {
