@@ -7,8 +7,24 @@ import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
 
-const KEYWORDS = ["Analyst", "CFA", "CEO", "Data Science", "FP&A"];
-
+const KEYWORDS = [
+  "Analyst", 
+  "CFA", 
+  "CEO", 
+  "Data Science", 
+  "FP&A",
+  "artificial_intelligence",
+  "analytics",
+  "data",
+  "data scientist",
+  "finance",
+  "financial analyst",
+  "investment",
+  "investment management",
+  "machine learning",
+  "systems analyst",
+  "technology manager"
+];
 // --- HÀM TỰ ĐỘNG LẤY TẤT CẢ KEY TỪ GOOGLE SHEETS ---
 // --- HÀM TỰ ĐỘNG LẤY CHÍNH XÁC KEY TỪ CỘT D GOOGLE SHEETS ---
 async function getScraperApiKeys() {
