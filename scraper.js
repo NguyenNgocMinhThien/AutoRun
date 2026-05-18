@@ -14,7 +14,6 @@ const KEYWORDS = [
   "Data Science", 
   "FP&A",
   "artificial_intelligence",
-  "analytics",
   "data",
   "data scientist",
   "finance",
