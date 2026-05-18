@@ -8,6 +8,24 @@ import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 
 const KEYWORDS = ["Analyst", "CFA", "CEO", "Data Science", "FP&A"];
+async function getScraperApiKeys() {
+    // URL xuất file CSV từ Google Sheet của bạn
+    const sheetCsvUrl = "https://docs.google.com/spreadsheets/d/1TvG_bxAE0AIStNuAxVMrfYdnJepKWvRGhDkFTRcRIzs/export?format=csv&gid=0";
+    try {
+        console.log("📥 Đang tải danh sách API Keys từ Google Sheet...");
+        const response = await axios.get(sheetCsvUrl);
+        const rows = response.data.split('\n');
+        
+        // Lọc lấy các API Key (bỏ qua dòng tiêu đề nếu có, loại bỏ khoảng trắng và ký tự xuống dòng)
+        const keys = rows.map(row => row.trim()).filter(row => row.length > 0 && !row.includes("Key")); 
+        
+        console.log(`✅ Đã tìm thấy ${keys.length} API Keys trong hệ thống.`);
+        return keys;
+    } catch (error) {
+        console.error("❌ Không thể đọc Google Sheet, sử dụng Key mặc định từ Secret.");
+        return [process.env.SCRAPER_API_KEY]; // Khôi phục dùng key cũ nếu sheet lỗi
+    }
+}
 
 // --- HÀM UPLOAD LITTERBOX, TEAMS, TELEGRAM giữ nguyên như cũ ---
 async function uploadToCatbox(filePath) {
