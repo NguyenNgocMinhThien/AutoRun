@@ -10,21 +10,40 @@ const require = createRequire(import.meta.url);
 const KEYWORDS = ["Analyst", "CFA", "CEO", "Data Science", "FP&A"];
 
 // --- HÀM TỰ ĐỘNG LẤY TẤT CẢ KEY TỪ GOOGLE SHEETS ---
+// --- HÀM TỰ ĐỘNG LẤY CHÍNH XÁC KEY TỪ CỘT D GOOGLE SHEETS ---
 async function getScraperApiKeys() {
-    const sheetCsvUrl = "https://docs.google.com/spreadsheets/d/1TvG_bxAE0AIStNuAxVMrfYdnJepKWvRGhDkFTRcRIzs/export?format=csv&gid=0";
+    // URL tải file dưới dạng Excel (xlsx) thay vì CSV để xử lý chính xác theo cột
+    const sheetExcelUrl = "https://docs.google.com/spreadsheets/d/1TvG_bxAE0AIStNuAxVMrfYdnJepKWvRGhDkFTRcRIzs/export?format=xlsx";
     try {
         console.log("📥 Đang tải danh sách API Keys từ Google Sheet...");
-        const response = await axios.get(sheetCsvUrl);
+        const response = await axios.get(sheetExcelUrl, { responseType: 'arraybuffer' });
         
-        // SỬA LỖI 401: Thay thế \r\n thành \n để bẻ dòng chuẩn xác, xóa bỏ ký tự xuống dòng ẩn
-        const rows = response.data.replace(/\r/g, '').split('\n');
+        // Đọc dữ liệu Excel bằng thư viện XLSX có sẵn trong dự án của bạn
+        const workbook = XLSX.read(response.data, { type: 'buffer' });
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
         
-        const keys = rows.map(row => row.trim()).filter(row => row.length > 0 && !row.includes("Key")); 
+        // Chuyển đổi sheet thành mảng JSON dữ liệu
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
         
-        console.log(`✅ Đã tìm thấy ${keys.length} API Keys trong hệ thống.`);
+        let keys = [];
+        
+        // Vòng lặp duyệt qua từng hàng dữ liệu (bỏ qua hàng tiêu đề đầu tiên)
+        for (let i = 1; i < jsonData.length; i++) {
+            const row = jsonData[i];
+            // Cột D trong Excel tương ứng với index số 3 trong mảng (A=0, B=1, C=2, D=3)
+            const apiKey = row[3] ? row[3].toString().trim() : "";
+            
+            // Chỉ lấy các chuỗi hợp lệ, độ dài tối thiểu của một ScraperAPI Key chuẩn (~32 ký tự)
+            if (apiKey && apiKey.length >= 20 && !apiKey.includes("KEY")) {
+                keys.push(apiKey);
+            }
+        }
+        
+        console.log(`✅ Đã bóc tách chính xác ${keys.length} API Keys hoạt động từ Cột D.`);
         return keys;
     } catch (error) {
-        console.error("❌ Không thể đọc Google Sheet, khôi phục dùng Key mặc định từ Secret.");
+        console.error("❌ Không thể đọc Google Sheet, khôi phục dùng Key mặc định từ Secret:", error.message);
         return [process.env.SCRAPER_API_KEY]; 
     }
 }
