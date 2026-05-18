@@ -8,26 +8,27 @@ import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 
 const KEYWORDS = ["Analyst", "CFA", "CEO", "Data Science", "FP&A"];
+
+// --- HÀM TỰ ĐỘNG LẤY TẤT CẢ KEY TỪ GOOGLE SHEETS ---
 async function getScraperApiKeys() {
-    // URL xuất file CSV từ Google Sheet của bạn
     const sheetCsvUrl = "https://docs.google.com/spreadsheets/d/1TvG_bxAE0AIStNuAxVMrfYdnJepKWvRGhDkFTRcRIzs/export?format=csv&gid=0";
     try {
         console.log("📥 Đang tải danh sách API Keys từ Google Sheet...");
         const response = await axios.get(sheetCsvUrl);
         const rows = response.data.split('\n');
         
-        // Lọc lấy các API Key (bỏ qua dòng tiêu đề nếu có, loại bỏ khoảng trắng và ký tự xuống dòng)
+        // Lọc lấy các API Key (bỏ qua dòng tiêu đề, loại bỏ khoảng trắng)
         const keys = rows.map(row => row.trim()).filter(row => row.length > 0 && !row.includes("Key")); 
         
         console.log(`✅ Đã tìm thấy ${keys.length} API Keys trong hệ thống.`);
         return keys;
     } catch (error) {
-        console.error("❌ Không thể đọc Google Sheet, sử dụng Key mặc định từ Secret.");
-        return [process.env.SCRAPER_API_KEY]; // Khôi phục dùng key cũ nếu sheet lỗi
+        console.error("❌ Không thể đọc Google Sheet, khôi phục dùng Key mặc định từ Secret.");
+        return [process.env.SCRAPER_API_KEY]; 
     }
 }
 
-// --- HÀM UPLOAD LITTERBOX, TEAMS, TELEGRAM giữ nguyên như cũ ---
+// --- CÁC HÀM PHỤ TRỢ GIỮ NGUYÊN NỘI DUNG 100% ---
 async function uploadToCatbox(filePath) {
     try {
         const form = new FormData();
@@ -108,6 +109,11 @@ async function sendTelegramFile(filePath) {
 // --- HÀM CHẠY CHÍNH ---
 async function runScraper() {
     console.log("🚀 Khởi động Scraper...");
+    
+    // Bước 1: Lấy danh sách toàn bộ Key từ file Google Sheet về trước
+    const apiKeys = await getScraperApiKeys();
+    let currentKeyIndex = 0;
+    
     let allJobs = [];
 
     for (const kw of KEYWORDS) {
@@ -119,10 +125,13 @@ async function runScraper() {
             try {
                 attempts++;
                 console.log(`🔍 Quét: ${kw} (Lần ${attempts})...`);
+                
+                // Trích xuất Key hiện tại từ mảng danh sách Google Sheet
+                const activeKey = apiKeys[currentKeyIndex % apiKeys.length];
 
                 const response = await axios.get('http://api.scraperapi.com', {
                     params: {
-                        api_key: process.env.SCRAPER_API_KEY,
+                        api_key: activeKey, // <-- Thay đổi thành Key động lấy từ Sheets
                         url: targetUrl,
                         country_code: 'ca'
                     },
@@ -151,13 +160,11 @@ async function runScraper() {
 
                     salary = salary.replace(/\s+/g, ' ').trim();
 
-                    // Chỉ giữ nếu có dấu $
                     if (salary.includes('$')) {
-                        // Loại bỏ các từ thừa: Full-time, Permanent, +1, Mon, Ove, etc.
                         salary = salary
                             .replace(/Full-time/gi, '')
                             .replace(/Permanent/gi, '')
-                            .replace(/Full-time/gi, '')   // phòng trường hợp lặp
+                            .replace(/Full-time/gi, '')   
                             .replace(/\+1/gi, '')
                             .replace(/Mon/gi, '')
                             .replace(/Ove/gi, '')
@@ -181,7 +188,7 @@ async function runScraper() {
                     allJobs.push({
                         Title: title,
                         Company: company,
-                        Salary: salary,        // ← sạch sẽ chỉ còn số lương
+                        Salary: salary,        
                         Location: location,
                         'Apply Method': applyMethod,
                         Link: relativeLink ? `https://ca.indeed.com${relativeLink}` : 'N/A',
@@ -196,6 +203,13 @@ async function runScraper() {
 
             } catch (err) {
                 console.log(`⚠️ Lỗi ${kw} (lần ${attempts}): ${err.message}`);
+                
+                // NẾU LỖI (Hết credit 403, lỗi 403 hoặc 500), tự động nhảy sang Key tiếp theo trong Sheets
+                if (apiKeys.length > 1) {
+                    currentKeyIndex++;
+                    console.log(`🔄 Phát hiện lỗi / hết credit. Tự động chuyển sang sử dụng API Key tiếp theo (Vị trí: ${currentKeyIndex + 1})...`);
+                }
+                
                 if (attempts < maxAttempts) await new Promise(r => setTimeout(r, 5000));
             }
         }
